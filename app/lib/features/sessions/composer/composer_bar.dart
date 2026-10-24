@@ -5,7 +5,9 @@
 /// 底行左侧为「+」圆钮（指令与附件统一入口）与盾牌权限钮，右侧为模型选择
 /// 与 34px 停止/发送圆钮。
 /// - 会话模式在「标准模式 / 计划模式」间切换，计划模式经 /plan 落笔生效；
-/// - 运行中且输入为空时，主按钮变成「发出全部排队消息」。
+/// - 运行中且输入为空时，主按钮变成「发出全部排队消息」；
+/// - 未聚焦且无内容（文字+附件）且未运行时收起为单行胶囊（对齐 Qoder 移动端
+///   参考样式），聚焦或出现内容后展开为完整输入卡。
 library;
 
 import 'package:flutter/material.dart';
@@ -102,7 +104,19 @@ class _ComposerBarState extends State<ComposerBar> {
 
   void _onFocusChanged() {
     if (!_focus.hasFocus) _controller.closeMenu();
+    // 聚焦/失焦驱动重建，切换收起态与展开态。
+    if (mounted) setState(() {});
   }
+
+  /// 收起态：键盘未激活、无任何内容（文字+附件）且会话未运行时，输入条
+  /// 退化为单行胶囊（左「+」+ 占位文字 + 右侧聚焦圆钮），对齐参考样式。
+  ///
+  /// 用键盘可见性而非 FocusNode.hasFocus 判定：移动端键盘收起后 Flutter
+  /// 仍保留焦点，按 hasFocus 会一直保持展开，不符合「键盘未激活即收起」。
+  bool get _collapsed =>
+      MediaQuery.viewInsetsOf(context).bottom <= 0 &&
+      !_controller.hasContent &&
+      !_controller.environment.running;
 
   /// 硬件键盘：Esc 关闭菜单，↑/↓ 在菜单内移动高亮。
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
@@ -142,8 +156,10 @@ class _ComposerBarState extends State<ComposerBar> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildTopRow(),
-                  const SizedBox(height: DshSpace.x2),
+                  if (!_collapsed) ...[
+                    _buildTopRow(),
+                    const SizedBox(height: DshSpace.x2),
+                  ],
                   AnimatedContainer(
                     duration: DshMotion.fast,
                     curve: DshMotion.curve,
@@ -159,29 +175,13 @@ class _ComposerBarState extends State<ComposerBar> {
                         ),
                       ],
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (_controller.environment.planMode ||
-                            !_controller.attachments.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: DshSpace.x2),
-                            child: AttachmentRail(
-                              store: _controller.attachments,
-                              leading: _controller.environment.planMode
-                                  ? _PlanChip(
-                                      onRemove: widget.actions.togglePlan,
-                                    )
-                                  : null,
-                            ),
-                          ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(6, 2, 6, 6),
-                          child: _buildField(),
-                        ),
-                        _buildBottomRow(),
-                      ],
+                    child: AnimatedSwitcher(
+                      duration: DshMotion.fast,
+                      switchInCurve: DshMotion.curve,
+                      switchOutCurve: DshMotion.curve,
+                      child: _collapsed
+                          ? _buildCollapsedRow(key: const ValueKey('collapsed'))
+                          : _buildExpandedCard(key: const ValueKey('expanded')),
                     ),
                   ),
                 ],
@@ -214,6 +214,80 @@ class _ComposerBarState extends State<ComposerBar> {
         ),
       ],
     );
+  }
+
+  /// 收起态单行胶囊：左「+」+ 占位文字 + 右侧黑色聚焦圆钮（对齐参考图）。
+  Widget _buildCollapsedRow({required Key key}) {
+    final p = context.dsh;
+    final view = widget.view;
+    return Row(
+      key: key,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // 参考图无灰色圆底，用裸「+」图标钮，功能同展开态底行「+」。
+        InkWell(
+          borderRadius: BorderRadius.circular(DshRadius.pill),
+          onTap: view.hasSnapshot ? _showCommandSheet : null,
+          child: Tooltip(
+            message: '指令与附件',
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: Icon(Icons.add, size: 24, color: p.midText),
+            ),
+          ),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: _buildField(),
+          ),
+        ),
+        PrimaryRoundButton(
+          icon: Icons.arrow_upward_rounded,
+          size: DshButton.composer,
+          semanticLabel: '输入',
+          // 无语音能力：点击聚焦输入框，弹起键盘并展开为完整输入卡。
+          onTap: _expandAndFocus,
+        ),
+      ],
+    );
+  }
+
+  /// 展开态完整输入卡：附件/计划栏 + 输入行 + 底行工具按钮。
+  Widget _buildExpandedCard({required Key key}) {
+    return Column(
+      key: key,
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_controller.environment.planMode ||
+            !_controller.attachments.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: DshSpace.x2),
+            child: AttachmentRail(
+              store: _controller.attachments,
+              leading: _controller.environment.planMode
+                  ? _PlanChip(onRemove: widget.actions.togglePlan)
+                  : null,
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(6, 2, 6, 6),
+          child: _buildField(),
+        ),
+        _buildBottomRow(),
+      ],
+    );
+  }
+
+  /// 圆钮点击：聚焦输入框并唤起键盘。键盘收起后焦点可能仍被保留，
+  /// 单纯 requestFocus 是空操作，需再显式 TextInput.show 弹回键盘。
+  void _expandAndFocus() {
+    _focus.requestFocus();
+    if (_focus.hasFocus) {
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+    }
   }
 
   Widget _buildField() {
@@ -306,8 +380,8 @@ class _ComposerBarState extends State<ComposerBar> {
             child: InkWell(
               onTap: widget.actions.cancelTurn,
               child: SizedBox(
-                width: 34,
-                height: 34,
+                width: DshButton.composer,
+                height: DshButton.composer,
                 child: Icon(
                   Icons.stop_rounded,
                   size: 17,
@@ -324,7 +398,7 @@ class _ComposerBarState extends State<ComposerBar> {
     if (running && !hasContent) {
       primary = PrimaryRoundButton(
         icon: Icons.queue_music_rounded,
-        size: 34,
+        size: DshButton.composer,
         color: context.dsh.foreground,
         semanticLabel: '发出全部排队消息',
         onTap: _controller.environment.hasQueued ? _controller.steerAll : null,
@@ -332,7 +406,7 @@ class _ComposerBarState extends State<ComposerBar> {
     } else {
       primary = PrimaryRoundButton(
         icon: Icons.arrow_upward_rounded,
-        size: 34,
+        size: DshButton.composer,
         semanticLabel: '发送',
         onTap: _controller.canSend ? _controller.submit : null,
       );
@@ -557,9 +631,9 @@ class _RoundToolButton extends StatelessWidget {
         child: InkWell(
           onTap: onPressed,
           child: SizedBox(
-            width: 28,
-            height: 28,
-            child: Icon(icon, size: 18, color: p.midText),
+            width: DshButton.tool,
+            height: DshButton.tool,
+            child: Icon(icon, size: DshIcon.tool, color: p.midText),
           ),
         ),
       ),

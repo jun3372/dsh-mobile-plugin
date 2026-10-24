@@ -51,9 +51,9 @@ class CircleButton extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: SizedBox(
-            width: 44,
-            height: 44,
-            child: Icon(icon, size: 20, color: foreground),
+            width: DshTouch.minTarget,
+            height: DshTouch.minTarget,
+            child: Icon(icon, size: DshIcon.action, color: foreground),
           ),
         ),
       ),
@@ -142,7 +142,7 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 44, color: p.dotGray),
+            Icon(icon, size: DshTouch.minTarget, color: p.dotGray),
             const SizedBox(height: DshSpace.x3),
             Text(
               message,
@@ -179,7 +179,11 @@ class ErrorView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off_outlined, size: 44, color: p.dotGray),
+            Icon(
+              Icons.cloud_off_outlined,
+              size: DshTouch.minTarget,
+              color: p.dotGray,
+            ),
             const SizedBox(height: DshSpace.x3),
             Text(
               message,
@@ -210,7 +214,7 @@ class PrimaryRoundButton extends StatelessWidget {
     super.key,
     required this.icon,
     this.onTap,
-    this.size = 44,
+    this.size = DshTouch.minTarget,
     this.color,
     this.semanticLabel,
   });
@@ -514,9 +518,17 @@ class _PopoverOptionEntryState extends State<_PopoverOptionEntry> {
                 width: 32,
                 child: option.icon == null
                     ? (option.selected
-                          ? Icon(Icons.check, size: 20, color: p.foreground)
+                          ? Icon(
+                              Icons.check,
+                              size: DshIcon.action,
+                              color: p.foreground,
+                            )
                           : null)
-                    : Icon(option.icon, size: 20, color: p.foreground),
+                    : Icon(
+                        option.icon,
+                        size: DshIcon.action,
+                        color: p.foreground,
+                      ),
               ),
               Expanded(
                 child: Text(option.label, style: context.dshText.bodyMedium),

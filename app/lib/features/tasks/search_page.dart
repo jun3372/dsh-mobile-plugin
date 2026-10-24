@@ -105,7 +105,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     final p = context.dsh;
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: 64,
         title: Container(
           height: 44,
           padding: const EdgeInsets.symmetric(horizontal: DshSpace.x3),
@@ -115,7 +114,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           ),
           child: Row(
             children: [
-              Icon(Icons.search, size: 18, color: p.secondaryText),
+              Icon(Icons.search, size: DshIcon.tool, color: p.secondaryText),
               const SizedBox(width: DshSpace.x2),
               Expanded(
                 child: TextField(
@@ -150,7 +149,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.search_off, size: 44, color: p.dotGray),
+            Icon(Icons.search_off, size: DshTouch.minTarget, color: p.dotGray),
             const SizedBox(height: DshSpace.x3),
             Text(
               _errorText(_error!),
@@ -180,7 +179,10 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             ? '会话'
             : '会话 ${id.length > 12 ? id.substring(0, 12) : id}';
         return ListTile(
-          leading: const Icon(Icons.chat_bubble_outline_rounded, size: 20),
+          leading: const Icon(
+            Icons.chat_bubble_outline_rounded,
+            size: DshIcon.action,
+          ),
           title: Text(
             hit.title ?? fallback,
             maxLines: 1,

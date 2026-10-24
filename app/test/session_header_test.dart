@@ -12,6 +12,7 @@ void main() {
   testWidgets('标题栏展示标题/服务端名，文件夹与更多分别回调', (tester) async {
     var folderTaps = 0;
     var moreTaps = 0;
+    var titleTaps = 0;
 
     await tester.pumpWidget(
       wrap(
@@ -21,6 +22,7 @@ void main() {
           onBack: () {},
           onFolder: () => folderTaps++,
           onMore: () => moreTaps++,
+          onTitleTap: () => titleTaps++,
         ),
       ),
     );
@@ -38,6 +40,11 @@ void main() {
     await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pump();
     expect(moreTaps, 1);
+
+    // 点击标题区触发详情弹层回调。
+    await tester.tap(find.text('调整会话输入框插件布局'));
+    await tester.pump();
+    expect(titleTaps, 1);
   });
 
   testWidgets('缺少标题与服务端时展示兜底文案', (tester) async {

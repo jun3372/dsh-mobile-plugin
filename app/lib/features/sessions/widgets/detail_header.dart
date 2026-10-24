@@ -25,12 +25,8 @@ class DetailHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.dsh;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        DshSpace.x4,
-        DshSpace.x2,
-        DshSpace.x3,
-        DshSpace.x2,
-      ),
+      // 与首页/会话页头部统一：左 20 对齐页边距，上下 8、右 12。
+      padding: DshHeaderMetrics.padding,
       child: Row(
         children: [
           CircleButton(

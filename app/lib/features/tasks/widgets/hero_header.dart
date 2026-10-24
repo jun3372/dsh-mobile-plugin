@@ -28,6 +28,8 @@ class HeroHeader extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: context.dshText.displaySmall?.copyWith(
+                // 与首页标题统一：大屏下大标题局部覆写为 20。
+                fontSize: DshHeaderMetrics.title,
                 fontWeight: FontWeight.w700,
                 color: p.foreground,
               ),

@@ -21,7 +21,7 @@ class ServersPage extends ConsumerWidget {
       body: servers.isEmpty
           ? const EmptyState(icon: Icons.dns_outlined, message: '尚未绑定任何服务端')
           : ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.symmetric(vertical: DshSpace.x2),
               itemCount: servers.length,
               separatorBuilder: (_, _) =>
                   const Divider(indent: DshSpace.x4, endIndent: DshSpace.x4),
@@ -34,7 +34,7 @@ class ServersPage extends ConsumerWidget {
                   background: Container(
                     color: p.dangerRed,
                     alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.only(right: 24),
+                    padding: const EdgeInsets.only(right: DshSpace.x6),
                     child: const Icon(
                       Icons.delete_outline,
                       color: Colors.white,
@@ -56,7 +56,7 @@ class ServersPage extends ConsumerWidget {
                       ),
                       child: Icon(
                         server.mode == 'lan' ? Icons.wifi : Icons.public,
-                        size: 20,
+                        size: DshIcon.action,
                         color: p.foreground,
                       ),
                     ),
@@ -75,7 +75,7 @@ class ServersPage extends ConsumerWidget {
                         if (isCurrent)
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
+                              horizontal: DshSpace.x2,
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
@@ -116,9 +116,17 @@ class ServersPage extends ConsumerWidget {
             ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+          padding: const EdgeInsets.fromLTRB(
+            DshSpace.x5,
+            DshSpace.x2,
+            DshSpace.x5,
+            DshSpace.x4,
+          ),
           child: FilledButton.icon(
-            icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
+            icon: const Icon(
+              Icons.qr_code_scanner_rounded,
+              size: DshIcon.action,
+            ),
             label: const Text('扫码添加服务端'),
             onPressed: () =>
                 Navigator.of(context).push(dshRoute(const ScanPage())),

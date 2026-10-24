@@ -291,7 +291,7 @@ class _WorkspaceFilePreviewPageState
     final base = TextStyle(
       fontFamily: 'monospace',
       fontFamilyFallback: const ['Menlo', 'Courier New'],
-      fontSize: 12.5,
+      fontSize: 13,
       height: 1.55,
       color: p.foreground,
     );

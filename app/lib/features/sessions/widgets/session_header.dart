@@ -15,6 +15,9 @@ class SessionHeader extends StatelessWidget {
   final VoidCallback onFolder;
   final VoidCallback onMore;
 
+  /// 点击标题区弹出会话详情。
+  final VoidCallback? onTitleTap;
+
   const SessionHeader({
     super.key,
     required this.title,
@@ -22,18 +25,15 @@ class SessionHeader extends StatelessWidget {
     required this.onBack,
     required this.onFolder,
     required this.onMore,
+    this.onTitleTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final p = context.dsh;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        DshSpace.x4,
-        DshSpace.x2,
-        DshSpace.x3,
-        DshSpace.x2,
-      ),
+      // 与首页头部统一：左 20 对齐页边距，上下 8、右 12。
+      padding: DshHeaderMetrics.padding,
       child: Row(
         children: [
           CircleButton(
@@ -43,37 +43,51 @@ class SessionHeader extends StatelessWidget {
           ),
           const SizedBox(width: DshSpace.x4),
           Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title ?? '新任务',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.dshText.titleLarge,
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.computer_outlined,
-                      size: 13,
-                      color: p.secondaryText,
-                    ),
-                    const SizedBox(width: DshSpace.x1),
-                    Flexible(
-                      child: Text(
-                        serverName ?? '本地服务端',
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                // 点击标题/副标题区弹出会话详情。
+                onTap: onTitleTap,
+                borderRadius: BorderRadius.circular(DshRadius.bubble),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DshSpace.x2,
+                    vertical: DshSpace.x1,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title ?? '新任务',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: context.dshText.bodySmall,
+                        style: context.dshText.titleLarge,
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 2),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.computer_outlined,
+                            size: 13,
+                            color: p.secondaryText,
+                          ),
+                          const SizedBox(width: DshSpace.x1),
+                          Flexible(
+                            child: Text(
+                              serverName ?? '本地服务端',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: context.dshText.bodySmall,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
           ),
           const SizedBox(width: DshSpace.x2),
@@ -149,9 +163,11 @@ class _PillIconButton extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: SizedBox(
-          width: 44,
-          height: 44,
-          child: Center(child: Icon(icon, size: 20, color: p.foreground)),
+          width: DshTouch.minTarget,
+          height: DshTouch.minTarget,
+          child: Center(
+            child: Icon(icon, size: DshIcon.action, color: p.foreground),
+          ),
         ),
       ),
     );

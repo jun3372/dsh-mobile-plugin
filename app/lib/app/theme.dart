@@ -215,6 +215,64 @@ abstract final class DshMotion {
   static const curve = Curves.easeOutCubic;
 }
 
+/// 图标尺寸 token（SPEC §3，2026-10 大屏精致化收敛）。
+/// 语义档位：行内装饰 14 / chip 与分组行 16 / 工具钮 18 /
+/// 圆钮与列表 leading 20 / 导航级（AppBar、Sheet 菜单）22。
+abstract final class DshIcon {
+  static const inline = 14.0;
+  static const chip = 16.0;
+  static const tool = 18.0;
+  static const action = 20.0;
+  static const nav = 22.0;
+}
+
+/// 触控目标下限（SPEC §3：44×44；视觉尺寸可小于触控区，用 padding 扩 hit area）。
+abstract final class DshTouch {
+  static const minTarget = 44.0;
+}
+
+/// 页面头部度量 token（2026-10 大屏精致化：Logo 28、大标题局部覆写 20）。
+abstract final class DshHeaderMetrics {
+  /// 自定义头部统一边距：左 20 对齐 SPEC 页边距，上下 8、右 12。
+  static const EdgeInsets padding = EdgeInsets.fromLTRB(
+    DshSpace.x5,
+    DshSpace.x2,
+    DshSpace.x3,
+    DshSpace.x2,
+  );
+
+  /// 首页 Logo 方块边长。
+  static const double logo = 28.0;
+
+  /// Logo「D」字符字号。
+  static const double logoFontSize = 14.0;
+
+  /// displaySmall 页面大标题的局部覆写值（全局字阶仍为 24）。
+  static const double title = 20.0;
+
+  /// 标题右侧下拉箭头。
+  static const double dropdownIcon = 20.0;
+}
+
+/// 圆形按钮度量 token（SPEC §3 实测固化，视觉尺寸）。
+abstract final class DshButton {
+  /// 发送/停止等 composer 主圆钮。
+  static const composer = 34.0;
+
+  /// composer 底行小工具钮。
+  static const tool = 28.0;
+
+  /// 新建任务 FAB。
+  static const fab = 64.0;
+  static const fabIcon = 26.0;
+}
+
+/// 筛选 chip 度量 token（SPEC §3：视觉 36，容器行 52 含触控缓冲）。
+abstract final class DshChip {
+  static const height = 36.0;
+  static const rowHeight = 52.0;
+}
+
 /// 取色/取字的便捷入口。
 extension DshThemeContext on BuildContext {
   DshPalette get dsh => DshPalette.of(this);
@@ -336,7 +394,7 @@ ThemeData buildDshTheme(Brightness brightness) {
       scrolledUnderElevation: 0,
       centerTitle: false,
       titleTextStyle: text.titleLarge?.copyWith(fontSize: 18),
-      iconTheme: IconThemeData(color: p.foreground, size: 22),
+      iconTheme: IconThemeData(color: p.foreground, size: DshIcon.nav),
       systemOverlayStyle: _overlayStyle(p, isDark),
     ),
     filledButtonTheme: FilledButtonThemeData(
@@ -377,7 +435,7 @@ ThemeData buildDshTheme(Brightness brightness) {
               : p.foreground,
         ),
         minimumSize: const WidgetStatePropertyAll(Size(44, 44)),
-        iconSize: const WidgetStatePropertyAll(22),
+        iconSize: const WidgetStatePropertyAll(DshIcon.nav),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(

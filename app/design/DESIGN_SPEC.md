@@ -55,7 +55,7 @@
 
 | Token | 值 | 用途 |
 |---|---|---|
-| display | 24 / w700 | 任务列表页标题 |
+| display | 24 / w700 | 任务列表页头/新建任务 Hero 标题**局部覆写为 20**（ui-ux-pro-max 收敛，2026-10） |
 | title | 18 / w700 | 会话标题、Sheet/Dialog 标题 |
 | body | 16 / w400–w600 | 正文、聊天、行标题 |
 | bodySmall | 15 / w400 | 输入框、次级正文 |
@@ -89,6 +89,17 @@ Markdown 专用（会话页）：h1 22、h2 20、h3 18，正文 16/1.6，行内�
 | 输入卡起始高 | ≥104 | 312 |
 | 主按钮（CTA/绑定） | 高 52，胶囊 | — |
 | 触控目标下限 | 44×44，相邻间距 ≥8 | — |
+
+2026-10 大屏精致化（ui-ux-pro-max 收敛）新增 token（实现见 `lib/app/theme.dart`）：
+
+| Token | 值 | 说明 |
+|---|---|---|
+| `DshIcon` | inline 14 / chip 16 / tool 18 / action 20 / nav 22 | 图标尺寸语义档位：行内装饰、chip 行、工具钮、圆钮与列表 leading、导航级 |
+| `DshTouch.minTarget` | 44 | 触控目标下限（视觉尺寸可小于触控区） |
+| `DshHeaderMetrics` | padding LTRB(20,8,12,8)；logo 28；logoFontSize 14；title 20；dropdownIcon 20 | 页面头部统一度量：首页/会话页/二级页头部边距一致（左 20 对齐页边距），首页 Logo 32→28、大标题 24→20（局部覆写）、下拉箭头 24→20 |
+| `DshButton` | composer 34 / tool 28 / fab 64 / fabIcon 26 | 圆形按钮视觉尺寸（仅 token 化，值不变） |
+| `DshChip` | height 36 / rowHeight 52 | 筛选 chip（含触控缓冲容器行） |
+| 搜索页 AppBar | 默认 56（移除 toolbarHeight 64） | 全部 Material AppBar 统一默认高度 |
 
 ## 4. 结构规则（自截图）
 

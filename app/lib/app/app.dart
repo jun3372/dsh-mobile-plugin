@@ -16,6 +16,7 @@ class DshApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: '探索未至之境',
+      debugShowCheckedModeBanner: false,
       theme: buildDshTheme(Brightness.light),
       darkTheme: buildDshTheme(Brightness.dark),
       themeMode: ThemeMode.system,

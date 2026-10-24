@@ -12,7 +12,6 @@ import '../servers/servers_providers.dart';
 import '../sessions/session_page.dart';
 import 'archived_page.dart';
 import 'new_task_page.dart';
-import 'search_page.dart';
 import 'tasks_providers.dart';
 import 'widgets/session_context_menu.dart';
 import 'widgets/session_row_tile.dart';
@@ -111,13 +110,6 @@ class _TasksPageState extends ConsumerState<TasksPage> {
                 ],
               ),
             ),
-          ),
-          CircleButton(
-            icon: Icons.search,
-            tooltip: '搜索',
-            onTap: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute<void>(builder: (_) => const SearchPage())),
           ),
           const SizedBox(width: DshSpace.x2),
           // Builder 提供锚点上下文，popover 贴 ⋯ 按钮右下角弹出。

@@ -1,4 +1,4 @@
-import 'package:dsh_mobile/features/sessions/composer/composer_document.dart';
+import 'package:dsh_mobile/widgets/composer/composer_document.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

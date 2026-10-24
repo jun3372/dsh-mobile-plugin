@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:dsh_mobile/core/models/dsh_models.dart';
 import 'package:dsh_mobile/core/services/api_client.dart';
 import 'package:dsh_mobile/core/services/dsh_api.dart';
-import 'package:dsh_mobile/features/sessions/composer/attachment_store.dart';
+import 'package:dsh_mobile/widgets/composer/attachment_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -328,6 +328,66 @@ void main() {
       expect(store.imageCount, 1);
       expect((items.first as PromptImage).mediaType, 'image/png');
       expect(items.last.toContentItem(), {'type': 'file', 'receiptId': 'r1'});
+    });
+  });
+
+  group('惰性会话：新建会话页附件先选、会话后建', () {
+    test('无会话时文件排队不发起上传，attachSession 后开泵', () async {
+      final seen = <http.Request>[];
+      final api = DshApi(
+        ApiClient(
+          origin: Uri.parse('http://h:1'),
+          password: 'p',
+          client: MockClient((request) async {
+            if (request.url.path == '/_dsh_mobile/v1/login') {
+              return http.Response(
+                jsonEncode({'token': 't' * 43, 'expiresIn': 43200}),
+                200,
+              );
+            }
+            seen.add(request);
+            return http.Response(
+              jsonEncode({
+                'ok': true,
+                'value': {
+                  'receiptId': 'r1',
+                  'file': {'attachmentId': 'a1', 'name': 'a.txt', 'bytes': 3},
+                },
+              }),
+              200,
+            );
+          }),
+        ),
+      );
+      final store = AttachmentStore(api: api);
+      expect(store.hasSession, isFalse);
+      final path = await writeFixture('a.txt', [1, 2, 3]);
+      await store.addFiles([path]);
+      await pumpEventQueue();
+      // 等会话阶段：不发起上传，但也不静默放行发送。
+      expect(seen, isEmpty);
+      expect(store.sendBlocker, '正在创建会话，请稍候…');
+
+      store.attachSession('s9');
+      await pumpEventQueue();
+      expect(store.hasSession, isTrue);
+      expect(store.sendBlocker, isNull);
+      expect(seen, hasLength(1));
+      expect(seen.single.url.queryParameters['sessionId'], 's9');
+      expect(store.buildAttachments()?.single.toContentItem(), {
+        'type': 'file',
+        'receiptId': 'r1',
+      });
+    });
+
+    test('图片不依赖会话，无会话也不阻断发送', () async {
+      final api = DshApi(
+        ApiClient(origin: Uri.parse('http://h:1'), password: 'p'),
+      );
+      final store = AttachmentStore(api: api);
+      final path = await writeFixture('a.png', _pngBytes);
+      expect(await store.addImages([path]), isNull);
+      expect(store.sendBlocker, isNull);
     });
   });
 }

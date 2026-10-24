@@ -9,7 +9,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-import '../../../app/theme.dart';
+import '../../app/theme.dart';
 import 'attachment_store.dart';
 import 'photo_lightbox.dart';
 

@@ -13,9 +13,10 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
-import '../../../core/errors.dart';
-import '../../../core/models/composer_models.dart';
-import '../../../core/services/dsh_api.dart';
+import '../../core/errors.dart';
+import '../../core/models/composer_models.dart';
+import '../../core/models/dsh_models.dart';
+import '../../core/services/dsh_api.dart';
 import 'attachment_store.dart';
 import 'composer_draft_store.dart';
 import 'composer_document.dart';
@@ -60,6 +61,44 @@ class ComposerEnvironment {
   @override
   int get hashCode =>
       Object.hash(ready, running, offline, planMode, workspaceName);
+}
+
+/// ComposerBar 渲染所需的页面快照：由页面从自己的视图状态投影而来，
+/// 让 composer 子系统不依赖任何 feature 层类型。
+class ComposerViewData {
+  final ImageLimits imageLimits;
+  final bool ready;
+  final bool running;
+  final bool offline;
+  final bool planActive;
+  final String? cwd;
+  final String? selectedModel;
+
+  const ComposerViewData({
+    this.imageLimits = const ImageLimits(),
+    this.ready = false,
+    this.running = false,
+    this.offline = false,
+    this.planActive = false,
+    this.cwd,
+    this.selectedModel,
+  });
+
+  // imageLimits 不参与相等性：宿主投影可能每帧给新实例，且 limits 本就
+  // 由 didUpdateWidget 每次同步到 AttachmentStore。
+  @override
+  bool operator ==(Object other) =>
+      other is ComposerViewData &&
+      other.ready == ready &&
+      other.running == running &&
+      other.offline == offline &&
+      other.planActive == planActive &&
+      other.cwd == cwd &&
+      other.selectedModel == selectedModel;
+
+  @override
+  int get hashCode =>
+      Object.hash(ready, running, offline, planActive, cwd, selectedModel);
 }
 
 /// 提交出口：由页面用会话 Notifier 的 tear-off 注入，composer 子系统不依赖 riverpod。

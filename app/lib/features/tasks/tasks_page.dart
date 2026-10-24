@@ -12,7 +12,6 @@ import '../servers/servers_providers.dart';
 import '../sessions/session_page.dart';
 import 'archived_page.dart';
 import 'new_task_page.dart';
-import 'search_page.dart';
 import 'tasks_providers.dart';
 import 'widgets/session_context_menu.dart';
 import 'widgets/session_row_tile.dart';
@@ -26,10 +25,8 @@ class TasksPage extends ConsumerStatefulWidget {
 }
 
 class _TasksPageState extends ConsumerState<TasksPage> {
-  static const _pageSize = 30;
   final _collapsedFolders = <String>{};
   String? _selectedFolder;
-  int _shownCount = _pageSize;
 
   @override
   void dispose() {
@@ -54,7 +51,6 @@ class _TasksPageState extends ConsumerState<TasksPage> {
             _buildFilterChips(tasks, prefs),
             if (connection.value == false) _buildOfflineBanner(),
             Expanded(child: _buildList(tasks, prefs)),
-            _buildViewMoreFooter(tasks),
           ],
         ),
       ),
@@ -112,13 +108,6 @@ class _TasksPageState extends ConsumerState<TasksPage> {
               ),
             ),
           ),
-          CircleButton(
-            icon: Icons.search,
-            tooltip: '搜索',
-            onTap: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute<void>(builder: (_) => const SearchPage())),
-          ),
           const SizedBox(width: DshSpace.x2),
           // Builder 提供锚点上下文，popover 贴 ⋯ 按钮右下角弹出。
           Builder(
@@ -148,7 +137,7 @@ class _TasksPageState extends ConsumerState<TasksPage> {
         if (name != null) folders.add(name);
       }
     }
-    // 容器高 52 = chip 视觉 36 + 上下 4 触控缓冲 + 4 外边距（SPEC §3）。
+    // 容器高 46 = chip 视觉 34 + 上下 4 触控缓冲 + 4 外边距。
     return SizedBox(
       height: DshChip.rowHeight,
       child: ListView(
@@ -289,9 +278,8 @@ class _TasksPageState extends ConsumerState<TasksPage> {
     );
   }
 
-  /// 下拉刷新：重置分页预算并同时重查连接与任务列表。
+  /// 下拉刷新：重查连接与任务列表。
   Future<void> _refresh() async {
-    setState(() => _shownCount = _pageSize);
     ref.invalidate(connectionCheckProvider);
     ref.invalidate(tasksProvider);
     try {
@@ -301,22 +289,17 @@ class _TasksPageState extends ConsumerState<TasksPage> {
     }
   }
 
-  /// 应用折叠态与本地分页预算后的分组视图。
+  /// 应用折叠态后的分组视图。
   List<TaskGroup> _visibleGroups(List<TaskGroup> groups) {
-    var budget = _shownCount;
-    final visible = <TaskGroup>[];
-    for (final group in groups) {
-      if (budget <= 0) break;
-      final collapsed = _collapsedFolders.contains(group.title);
-      final sessions = collapsed
-          ? const <SessionSummary>[]
-          : group.sessions.length <= budget
-          ? group.sessions
-          : group.sessions.sublist(0, budget);
-      budget -= sessions.length;
-      visible.add(TaskGroup(group.title, sessions));
-    }
-    return visible;
+    return [
+      for (final group in groups)
+        TaskGroup(
+          group.title,
+          _collapsedFolders.contains(group.title)
+              ? const <SessionSummary>[]
+              : group.sessions,
+        ),
+    ];
   }
 
   Widget _buildGroupRow(TaskGroup group) {
@@ -706,36 +689,6 @@ class _TasksPageState extends ConsumerState<TasksPage> {
     );
   }
 
-  Widget _buildViewMoreFooter(AsyncValue<List<SessionSummary>> tasks) {
-    final p = context.dsh;
-    final sessions = tasks.value;
-    if (sessions == null) return const SizedBox.shrink();
-    final total = filterSessionsByFolder(
-      visibleSessions(
-        sessions,
-        archivedIds: ref.read(archivedIdsProvider),
-        pinnedIds: ref.read(pinnedIdsProvider),
-      ),
-      _selectedFolder,
-    ).length;
-    if (total <= _shownCount) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(left: DshSpace.x5, bottom: DshSpace.x3),
-      child: TextButton.icon(
-        onPressed: () => setState(() => _shownCount += _pageSize),
-        icon: Icon(
-          Icons.more_horiz,
-          size: DshIcon.tool,
-          color: p.secondaryText,
-        ),
-        label: Text(
-          '查看更多',
-          style: context.dshText.bodyMedium?.copyWith(color: p.secondaryText),
-        ),
-      ),
-    );
-  }
-
   void _openNewTask() {
     Navigator.of(
       context,
@@ -925,9 +878,9 @@ class _FilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.dsh;
-    // 视觉高 36 + 上下 4 触控缓冲 = 44 触控目标（SPEC §3）。
+    // 视觉高 34 + 上下 4 触控缓冲 = 42 触控目标；右侧间距分隔相邻工作区。
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.fromLTRB(0, 4, DshSpace.x2, 4),
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(DshRadius.pill),
@@ -939,7 +892,7 @@ class _FilterChip extends StatelessWidget {
             curve: DshMotion.curve,
             padding: const EdgeInsets.symmetric(
               horizontal: DshSpace.x4,
-              vertical: DshSpace.x2,
+              vertical: 6,
             ),
             decoration: BoxDecoration(
               color: selected ? p.foreground : p.chipGray,

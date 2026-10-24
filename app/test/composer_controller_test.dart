@@ -49,7 +49,6 @@ class _FakeSource extends TriggerSource {
 class _RecordingPorts {
   final sent = <List<Object?>>[];
   final commands = <List<Object?>>[];
-  int steerCalls = 0;
   Object? failWith;
 
   CommandExecution commandResult = const CommandExecution(
@@ -67,7 +66,6 @@ class _RecordingPorts {
       commands.add([line, attachments]);
       return commandResult;
     },
-    steerQueued: () async => steerCalls++,
   );
 }
 
@@ -197,7 +195,6 @@ void main() {
         h.controller.placeholderState,
         ComposerPlaceholderState.steerQueue,
       );
-      expect(h.controller.showSteerAll, isTrue);
     });
   });
 
@@ -302,14 +299,21 @@ void main() {
       expect(h.controller.draftText, isEmpty);
     });
 
-    test('运行中且输入为空时走插队发送', () async {
+    test('队列撤回：空输入回填文本，已有内容追加一行', () async {
+      final h = _Harness();
+      await h.controller.recallToInput('撤回的消息');
+      expect(h.controller.draftText, '撤回的消息');
+      h.type('已有的草稿');
+      await h.controller.recallToInput('撤回的消息');
+      expect(h.controller.draftText, '已有的草稿\n撤回的消息');
+    });
+
+    test('运行中且输入为空时占位切换到排队语义', () async {
       final h = _Harness();
       h.controller.syncEnvironment(
         const ComposerEnvironment(ready: true, running: true),
       );
-      expect(h.controller.showSteerAll, isTrue);
-      await h.controller.steerAll();
-      expect(h.ports.steerCalls, 1);
+      expect(h.controller.placeholderText, contains('消息队列'));
     });
 
     test('会话未就绪时提交被忽略', () async {

@@ -140,7 +140,7 @@ class _TasksPageState extends ConsumerState<TasksPage> {
         if (name != null) folders.add(name);
       }
     }
-    // 容器高 52 = chip 视觉 36 + 上下 4 触控缓冲 + 4 外边距（SPEC §3）。
+    // 容器高 46 = chip 视觉 34 + 上下 4 触控缓冲 + 4 外边距。
     return SizedBox(
       height: DshChip.rowHeight,
       child: ListView(
@@ -917,9 +917,9 @@ class _FilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.dsh;
-    // 视觉高 36 + 上下 4 触控缓冲 = 44 触控目标（SPEC §3）。
+    // 视觉高 34 + 上下 4 触控缓冲 = 42 触控目标；右侧间距分隔相邻工作区。
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.fromLTRB(0, 4, DshSpace.x2, 4),
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(DshRadius.pill),
@@ -931,7 +931,7 @@ class _FilterChip extends StatelessWidget {
             curve: DshMotion.curve,
             padding: const EdgeInsets.symmetric(
               horizontal: DshSpace.x4,
-              vertical: DshSpace.x2,
+              vertical: 6,
             ),
             decoration: BoxDecoration(
               color: selected ? p.foreground : p.chipGray,

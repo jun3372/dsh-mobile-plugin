@@ -267,10 +267,10 @@ abstract final class DshButton {
   static const fabIcon = 26.0;
 }
 
-/// 筛选 chip 度量 token（SPEC §3：视觉 36，容器行 52 含触控缓冲）。
+/// 筛选 chip 度量 token（视觉 34，容器行 46 含触控缓冲）。
 abstract final class DshChip {
-  static const height = 36.0;
-  static const rowHeight = 52.0;
+  static const height = 34.0;
+  static const rowHeight = 46.0;
 }
 
 /// 取色/取字的便捷入口。

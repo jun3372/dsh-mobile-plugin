@@ -126,6 +126,9 @@ class _ComposerBarState extends State<ComposerBar> {
       !_expandRequested &&
       MediaQuery.viewInsetsOf(context).bottom <= 0 &&
       !_controller.hasContent &&
+      // 计划模式激活期保持展开：计划 chip 只在展开卡顶部渲染，塌回收起态
+      // 会丢失状态展示（也发生在空内容下切计划模式弹层收起键盘的场景）。
+      !_controller.environment.planMode &&
       !_controller.environment.running;
 
   /// 硬件键盘：Esc 关闭菜单，↑/↓ 在菜单内移动高亮。

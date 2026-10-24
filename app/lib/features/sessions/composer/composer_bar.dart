@@ -453,6 +453,9 @@ class _ComposerBarState extends State<ComposerBar> {
   void _showCommandSheet() {
     final actions = widget.actions;
     final controller = _controller;
+    // Future 必须在 builder 外取一次：sheet 拖拽/键盘动画期间 builder 逐帧
+    // 重跑，内联创建 Future 会让 FutureBuilder 每帧重置回 loading，列表塌陷闪烁。
+    final commands = actions.hostCommands();
     showDshSheet<void>(
       context,
       heightFactor: 0.75,
@@ -492,7 +495,7 @@ class _ComposerBarState extends State<ComposerBar> {
               ),
               const _LauncherSectionTitle(label: '宿主命令'),
               FutureBuilder<List<TriggerItem>>(
-                future: actions.hostCommands(),
+                future: commands,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState != ConnectionState.done) {
                     return const Padding(

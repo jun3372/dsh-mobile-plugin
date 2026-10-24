@@ -13,7 +13,9 @@ class SessionHeader extends StatelessWidget {
 
   /// 打开工作区信息 sheet。
   final VoidCallback onFolder;
-  final VoidCallback onMore;
+
+  /// 打开更多菜单；[anchorContext] 为 ⋯ 按钮上下文，popover 贴其右下角弹出。
+  final void Function(BuildContext anchorContext) onMore;
 
   /// 点击标题区弹出会话详情。
   final VoidCallback? onTitleTap;
@@ -101,7 +103,9 @@ class SessionHeader extends StatelessWidget {
 /// 右侧浮起胶囊：文件夹 / 更多两个触控区。
 class _HeaderActionsPill extends StatelessWidget {
   final VoidCallback onFolder;
-  final VoidCallback onMore;
+
+  /// 打开更多菜单；[anchorContext] 为 ⋯ 按钮上下文，popover 贴其右下角弹出。
+  final void Function(BuildContext anchorContext) onMore;
 
   const _HeaderActionsPill({required this.onFolder, required this.onMore});
 
@@ -132,10 +136,13 @@ class _HeaderActionsPill extends StatelessWidget {
               tooltip: '工作区',
               onTap: onFolder,
             ),
-            _PillIconButton(
-              icon: Icons.more_horiz,
-              tooltip: '更多',
-              onTap: onMore,
+            // Builder 提供锚点上下文，popover 贴 ⋯ 按钮右下角弹出。
+            Builder(
+              builder: (buttonContext) => _PillIconButton(
+                icon: Icons.more_horiz,
+                tooltip: '更多',
+                onTap: () => onMore(buttonContext),
+              ),
             ),
           ],
         ),

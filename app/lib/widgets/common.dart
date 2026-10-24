@@ -384,8 +384,8 @@ class DshPopoverSection {
   const DshPopoverSection({this.caption, required this.options});
 }
 
-/// 右上浮层菜单（SPEC §4 实测：宽 224、圆角 24、选项行 52、选中标记在标签左侧、
-/// 分组之间通栏细分割线）。
+/// 右上浮层菜单（SPEC §4 实测：圆角 24、选项行 52、选中标记在标签左侧、
+/// 分组之间通栏细分割线；宽 176，与锚点之间留 8 间距）。
 /// [anchorContext] 为触发按钮的 BuildContext，菜单贴其右下角弹出。
 Future<void> showDshPopoverMenu(
   BuildContext anchorContext, {
@@ -396,8 +396,15 @@ Future<void> showDshPopoverMenu(
       Overlay.of(anchorContext).context.findRenderObject()! as RenderBox;
   final position = RelativeRect.fromRect(
     Rect.fromPoints(
-      box.localToGlobal(box.size.bottomLeft(Offset.zero), ancestor: overlay),
-      box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
+      // 菜单与锚点之间留 8 间距，避免贴死按钮。
+      box.localToGlobal(
+        box.size.bottomLeft(const Offset(0, DshSpace.x2)),
+        ancestor: overlay,
+      ),
+      box.localToGlobal(
+        box.size.bottomRight(const Offset(0, DshSpace.x2)),
+        ancestor: overlay,
+      ),
     ),
     Offset.zero & overlay.size,
   );
@@ -412,7 +419,7 @@ Future<void> showDshPopoverMenu(
       borderRadius: BorderRadius.circular(DshRadius.menu),
       side: BorderSide(color: p.divider),
     ),
-    constraints: const BoxConstraints.tightFor(width: 224),
+    constraints: const BoxConstraints.tightFor(width: 176),
     items: [
       for (final (index, section) in sections.indexed) ...[
         if (index > 0) const _PopoverDividerEntry(),

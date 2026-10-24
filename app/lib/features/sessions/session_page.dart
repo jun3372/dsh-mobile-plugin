@@ -15,6 +15,7 @@ import '../../core/session/session_replica.dart'
 import '../../widgets/common.dart';
 import '../../widgets/model_picker_sheet.dart';
 import '../servers/servers_providers.dart';
+import '../tasks/tasks_providers.dart';
 import 'composer/attachment_sources.dart';
 import 'composer/attachment_store.dart';
 import 'composer/composer_bar.dart';
@@ -128,51 +129,93 @@ class _SessionPageState extends ConsumerState<SessionPage> {
     );
   }
 
-  /// ⋯菜单：重命名 / 分叉 / 模型选择。
-  void _showSessionMenu() {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            DshSheetTitle(
-              title: ref.read(sessionProvider(_key)).value?.title ?? '新任务',
+  /// ⋯菜单：置顶 / 重命名 / 分叉 / 归档（popover 贴 ⋯ 按钮右下角弹出）。
+  void _showSessionMenu(BuildContext anchorContext) {
+    final sessionId = _key.sessionId;
+    final pinned = ref.read(pinnedIdsProvider).contains(sessionId);
+    final archived = ref.read(archivedIdsProvider).contains(sessionId);
+    showDshPopoverMenu(
+      anchorContext,
+      sections: [
+        DshPopoverSection(
+          options: [
+            DshPopoverOption(
+              label: pinned ? '取消置顶' : '置顶',
+              icon: pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+              onTap: () => _togglePinned(sessionId, pinned: pinned),
             ),
-            ListTile(
-              leading: const Icon(
-                Icons.drive_file_rename_outline,
-                size: DshIcon.nav,
-              ),
-              title: const Text('重命名'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _showRenameDialog();
-              },
+            DshPopoverOption(
+              label: '重命名',
+              icon: Icons.drive_file_rename_outline,
+              onTap: _showRenameDialog,
             ),
-            ListTile(
-              leading: const Icon(Icons.call_split_rounded, size: DshIcon.nav),
-              title: const Text('分叉新会话'),
-              subtitle: const Text('从当前历史复制一份继续'),
-              onTap: () async {
-                Navigator.of(sheetContext).pop();
-                await _fork();
-              },
+            DshPopoverOption(
+              label: '分叉新会话',
+              icon: Icons.call_split_rounded,
+              onTap: _fork,
             ),
-            ListTile(
-              leading: const Icon(Icons.tune, size: DshIcon.nav),
-              title: const Text('模型选择'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _showModelPicker();
-              },
+            DshPopoverOption(
+              label: archived ? '取消归档' : '归档',
+              icon: Icons.inventory_2_outlined,
+              onTap: () => _toggleArchived(sessionId, archived: archived),
             ),
-            const SizedBox(height: DshSpace.x2),
           ],
         ),
-      ),
+      ],
     );
+  }
+
+  Future<void> _togglePinned(String sessionId, {required bool pinned}) async {
+    final notifier = ref.read(pinnedIdsProvider.notifier);
+    try {
+      if (pinned) {
+        await notifier.unpin(sessionId);
+      } else {
+        await notifier.pin(sessionId);
+      }
+    } on AppException catch (e) {
+      if (mounted) _showError(e.userMessage);
+    }
+  }
+
+  Future<void> _toggleArchived(
+    String sessionId, {
+    required bool archived,
+  }) async {
+    if (!archived) {
+      // 归档是不可见的破坏性变更，先确认。
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('归档会话'),
+          content: const Text('归档后将回到首页，可在归档管理中找回。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('归档'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    final notifier = ref.read(archivedIdsProvider.notifier);
+    try {
+      if (archived) {
+        await notifier.unarchive(sessionId);
+      } else {
+        await notifier.archive(sessionId);
+        if (!mounted) return;
+        // 归档后当前会话不再属于活跃列表，退回首页。
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } on AppException catch (e) {
+      if (mounted) _showError(e.userMessage);
+    }
   }
 
   /// 点击头部标题：从底部弹出当前会话详情（任务 ID / 元数据）。

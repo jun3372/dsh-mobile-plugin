@@ -18,7 +18,7 @@ import 'load_older_row.dart';
 import 'message_action_row.dart';
 import 'message_images.dart';
 import 'question_sheet.dart';
-import 'tool_card.dart';
+import 'tool_compact_row.dart';
 import 'turn_error_card.dart';
 import '../session_providers.dart';
 
@@ -209,7 +209,7 @@ class _ChatPaneState extends ConsumerState<ChatPane>
       case TranscriptKind.assistant:
         return _buildAssistantNode(node);
       case TranscriptKind.tool:
-        return ToolCard(key: ValueKey(node.id), node: node);
+        return ToolCompactRow(key: ValueKey(node.id), node: node);
       case TranscriptKind.error:
       case TranscriptKind.notice:
       case TranscriptKind.compaction:
@@ -762,62 +762,100 @@ class _GoalPlanCard extends StatelessWidget {
   }
 }
 
-/// 「深度思考」折叠区：assistant reasoning 内容。
-class _ReasoningSection extends StatefulWidget {
+/// 「深度思考」紧凑行：点击弹出底部 sheet 展示 reasoning 全文。
+class _ReasoningSection extends StatelessWidget {
   final String text;
 
   const _ReasoningSection({required this.text});
 
   @override
-  State<_ReasoningSection> createState() => _ReasoningSectionState();
-}
-
-class _ReasoningSectionState extends State<_ReasoningSection> {
-  bool _expanded = false;
-
-  @override
   Widget build(BuildContext context) {
     final p = context.dsh;
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: const EdgeInsets.only(bottom: 8),
-        initiallyExpanded: _expanded,
-        onExpansionChanged: (value) => setState(() => _expanded = value),
-        leading: Icon(Icons.settings_outlined, size: 18, color: p.midText),
-        title: Text(
-          '深度思考',
-          style: context.dshText.bodySmall?.copyWith(
-            fontSize: 14,
-            color: p.midText,
-          ),
-        ),
-        trailing: Icon(
-          _expanded
-              ? Icons.keyboard_arrow_up_rounded
-              : Icons.keyboard_arrow_right_rounded,
-          size: 18,
-          color: p.secondaryText,
-        ),
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: p.chipGray,
-              borderRadius: BorderRadius.circular(DshRadius.codeBlock),
-            ),
-            child: Text(
-              widget.text,
-              style: context.dshText.bodySmall?.copyWith(
-                fontSize: 13,
-                color: p.secondaryText,
-                height: 1.5,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: InkWell(
+        onTap: () => showDshSheet(
+          context,
+          heightFactor: 0.7,
+          builder: (_) => SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(
+                DshSpace.x5,
+                DshSpace.x3,
+                DshSpace.x5,
+                DshSpace.x5,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.psychology_outlined,
+                        size: DshIcon.action,
+                        color: p.midText,
+                      ),
+                      const SizedBox(width: DshSpace.x2),
+                      Text(
+                        '深度思考',
+                        style: context.dshText.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: p.foreground,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: DshSpace.x3),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(DshSpace.x3),
+                    decoration: BoxDecoration(
+                      color: p.chipGray,
+                      borderRadius: BorderRadius.circular(DshRadius.codeBlock),
+                    ),
+                    child: Text(
+                      text,
+                      style: context.dshText.bodySmall?.copyWith(
+                        fontSize: 13,
+                        color: p.secondaryText,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-        ],
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.psychology_outlined,
+              size: DshIcon.tool,
+              color: p.midText,
+            ),
+            const SizedBox(width: DshSpace.x2),
+            Expanded(
+              child: Text(
+                '深度思考',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.dshText.bodySmall?.copyWith(
+                  fontSize: 14,
+                  color: p.midText,
+                ),
+              ),
+            ),
+            const SizedBox(width: DshSpace.x1),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: DshIcon.tool,
+              color: p.tertiaryText,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -264,7 +264,7 @@ abstract final class DshButton {
 
   /// 新建任务 FAB。
   static const fab = 64.0;
-  static const fabIcon = 26.0;
+  static const fabIcon = 22.0;
 }
 
 /// 筛选 chip 度量 token（视觉 34，容器行 46 含触控缓冲）。

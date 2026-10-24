@@ -689,7 +689,6 @@ class _TasksPageState extends ConsumerState<TasksPage> {
     );
   }
 
-
   void _openNewTask() {
     Navigator.of(
       context,

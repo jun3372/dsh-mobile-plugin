@@ -1,0 +1,63 @@
+{
+  "name": "dsh-mobile-plugin",
+  "version": "0.1.0-dev.26",
+  "private": true,
+  "description": "DSH Mobile 手机连接插件：局域网、Cloudflare 与 frpc 隧道、扫码配对、开机自动恢复",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [],
+      "immediately": true
+    },
+    "plugin": {
+      "displayName": {
+        "zh": "DSH Mobile 手机连接",
+        "en": "DSH Mobile"
+      },
+      "description": {
+        "zh": "Android/iOS/HarmonyOS NEXT 原生 App 连接网关",
+        "en": "手机端扫码配对与远程访问网关"
+      },
+      "categories": [
+        "mobile",
+        "remote",
+        "network"
+      ]
+    }
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "compare:live": "node scripts/compare-direct-proxy.mjs",
+    "check": "node --check lib/index.js && node --check lib/client.js && node --check lib/upstream-auth.js && node --check lib/gateway.js && node --check lib/service.js && node --check lib/tunnel.js && node --check lib/qr.js && node --check lib/cloudflared.js && node --check lib/frpc.js && node --check lib/frpc-downloader.js && node --check lib/download-source.js",
+    "pack:local": "npm pack --ignore-scripts"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT"
+}

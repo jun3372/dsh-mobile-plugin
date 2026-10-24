@@ -1,0 +1,951 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../app/theme.dart';
+import '../../core/errors.dart';
+import '../../core/models/dsh_session.dart';
+import '../../core/mux/workspace_hub.dart';
+import '../../widgets/common.dart';
+import '../servers/servers_page.dart';
+import '../servers/servers_providers.dart';
+import '../sessions/session_page.dart';
+import 'archived_page.dart';
+import 'new_task_page.dart';
+import 'search_page.dart';
+import 'tasks_providers.dart';
+
+/// 首页任务列表（仿 Qoder CN：大标题+服务器切换、筛选 chips、分组列表、⋯ popover、FAB）。
+class TasksPage extends ConsumerStatefulWidget {
+  const TasksPage({super.key});
+
+  @override
+  ConsumerState<TasksPage> createState() => _TasksPageState();
+}
+
+class _TasksPageState extends ConsumerState<TasksPage> {
+  static const _pageSize = 30;
+  final _collapsedFolders = <String>{};
+  String? _selectedFolder;
+  int _shownCount = _pageSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final server = ref.watch(currentServerProvider);
+    final tasks = ref.watch(tasksProvider);
+    final prefs = ref.watch(taskPrefsProvider);
+    final connection = ref.watch(connectionCheckProvider);
+
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildHeader(server?.name ?? 'DSH', connection),
+            _buildFilterChips(tasks, prefs),
+            if (connection.value == false) _buildOfflineBanner(),
+            Expanded(child: _buildList(tasks, prefs)),
+            _buildViewMoreFooter(tasks),
+          ],
+        ),
+      ),
+      floatingActionButton: _NewTaskFab(onTap: _openNewTask),
+    );
+  }
+
+  Widget _buildHeader(String serverName, AsyncValue<bool> connection) {
+    final p = context.dsh;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        DshSpace.x5,
+        DshSpace.x3,
+        DshSpace.x3,
+        0,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: p.foreground,
+              borderRadius: BorderRadius.circular(DshRadius.leading),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              'D',
+              style: TextStyle(
+                color: p.onForeground,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: DshSpace.x2),
+          Expanded(
+            child: GestureDetector(
+              onTap: _showServerSwitcher,
+              behavior: HitTestBehavior.opaque,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      serverName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.dshText.displaySmall,
+                    ),
+                  ),
+                  const SizedBox(width: DshSpace.x1),
+                  const Icon(Icons.keyboard_arrow_down_rounded, size: 24),
+                ],
+              ),
+            ),
+          ),
+          CircleButton(
+            icon: Icons.search,
+            tooltip: '搜索',
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => const SearchPage())),
+          ),
+          const SizedBox(width: DshSpace.x2),
+          // Builder 提供锚点上下文，popover 贴 ⋯ 按钮右下角弹出。
+          Builder(
+            builder: (buttonContext) => CircleButton(
+              icon: Icons.more_horiz,
+              tooltip: '更多',
+              onTap: () => _showMoreMenu(buttonContext),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChips(
+    AsyncValue<List<SessionSummary>> tasks,
+    TaskPrefs prefs,
+  ) {
+    final folders = <String>{};
+    if (tasks.value != null) {
+      for (final session in visibleSessions(
+        tasks.value!,
+        archivedIds: ref.watch(archivedIdsProvider),
+        pinnedIds: ref.watch(pinnedIdsProvider),
+      )) {
+        final name = session.folderName;
+        if (name != null) folders.add(name);
+      }
+    }
+    // 容器高 52 = chip 视觉 36 + 上下 4 触控缓冲 + 4 外边距（SPEC §3）。
+    return SizedBox(
+      height: 52,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(
+          horizontal: DshSpace.x5,
+          vertical: DshSpace.x1,
+        ),
+        children: [
+          _FilterChip(
+            label: '全部',
+            selected: _selectedFolder == null,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              setState(() => _selectedFolder = null);
+            },
+          ),
+          for (final folder in folders)
+            _FilterChip(
+              label: folder,
+              icon: Icons.folder_outlined,
+              selected: _selectedFolder == folder,
+              onTap: () {
+                HapticFeedback.selectionClick();
+                setState(
+                  () => _selectedFolder = _selectedFolder == folder
+                      ? null
+                      : folder,
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOfflineBanner() {
+    final p = context.dsh;
+    return Material(
+      color: p.runningYellow.withValues(alpha: 0.14),
+      child: InkWell(
+        onTap: () => ref.invalidate(connectionCheckProvider),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: DshSpace.x5,
+            vertical: DshSpace.x3,
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.wifi_off_rounded, size: 16, color: p.runningYellow),
+              const SizedBox(width: DshSpace.x2),
+              Expanded(
+                child: Text(
+                  '服务端连接不可用，点按重试',
+                  style: context.dshText.bodySmall?.copyWith(
+                    fontSize: 13,
+                    color: p.runningYellow,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildList(AsyncValue<List<SessionSummary>> tasks, TaskPrefs prefs) {
+    return tasks.when(
+      skipLoadingOnReload: true,
+      loading: () =>
+          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      error: (error, _) => ErrorView(
+        error: error,
+        onRetry: () {
+          ref.invalidate(connectionCheckProvider);
+          ref.invalidate(tasksProvider);
+        },
+      ),
+      data: (sessions) {
+        final archived = ref.watch(archivedIdsProvider);
+        final pinned = ref.watch(pinnedIdsProvider);
+        final workspaces = ref.watch(workspacesProvider);
+        final visible = filterSessionsByFolder(
+          visibleSessions(sessions, archivedIds: archived, pinnedIds: pinned),
+          _selectedFolder,
+        );
+        final groups = groupTasks(visible, prefs, workspaces: workspaces);
+        final rows = <Object>[
+          for (final group in _visibleGroups(groups)) ...[
+            group,
+            ...group.sessions,
+          ],
+        ];
+        if (rows.isEmpty) {
+          return RefreshIndicator(
+            onRefresh: _refresh,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: const [
+                SizedBox(
+                  height: 320,
+                  child: EmptyState(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    message: '暂无任务',
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        return RefreshIndicator(
+          onRefresh: _refresh,
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(top: 4, bottom: 96),
+            itemCount: rows.length,
+            itemBuilder: (context, index) {
+              final row = rows[index];
+              return row is TaskGroup
+                  ? _buildGroupRow(row)
+                  : _buildTaskRow(row as SessionSummary);
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  /// 下拉刷新：重置分页预算并同时重查连接与任务列表。
+  Future<void> _refresh() async {
+    setState(() => _shownCount = _pageSize);
+    ref.invalidate(connectionCheckProvider);
+    ref.invalidate(tasksProvider);
+    try {
+      await ref.read(tasksProvider.future);
+    } catch (_) {
+      // 错误由列表状态展示，这里只负责结束下拉动画。
+    }
+  }
+
+  /// 应用折叠态与本地分页预算后的分组视图。
+  List<TaskGroup> _visibleGroups(List<TaskGroup> groups) {
+    var budget = _shownCount;
+    final visible = <TaskGroup>[];
+    for (final group in groups) {
+      if (budget <= 0) break;
+      final collapsed = _collapsedFolders.contains(group.title);
+      final sessions = collapsed
+          ? const <SessionSummary>[]
+          : group.sessions.length <= budget
+          ? group.sessions
+          : group.sessions.sublist(0, budget);
+      budget -= sessions.length;
+      visible.add(TaskGroup(group.title, sessions));
+    }
+    return visible;
+  }
+
+  Widget _buildGroupRow(TaskGroup group) {
+    final p = context.dsh;
+    final expanded = !_collapsedFolders.contains(group.title);
+    return InkWell(
+      onTap: () => setState(() {
+        expanded
+            ? _collapsedFolders.add(group.title)
+            : _collapsedFolders.remove(group.title);
+      }),
+      onLongPress: () => _showWorkspaceActions(group.title),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          DshSpace.x6,
+          DshSpace.x4,
+          DshSpace.x5,
+          DshSpace.x1,
+        ),
+        child: Row(
+          children: [
+            // 参考稿分组标题恒为次级灰（实测 #9D9D9D），展开/折叠只改箭头方向。
+            Icon(Icons.folder_outlined, size: 16, color: p.secondaryText),
+            const SizedBox(width: DshSpace.x2),
+            Expanded(
+              child: Text(
+                group.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.dshText.bodySmall?.copyWith(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: p.secondaryText,
+                ),
+              ),
+            ),
+
+            // chevron 右向为折叠，旋转 90° 表示展开。
+            AnimatedRotation(
+              turns: expanded ? 0.25 : 0,
+              duration: DshMotion.fast,
+              curve: DshMotion.curve,
+              child: Icon(Icons.chevron_right, size: 18, color: p.tertiaryText),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 长按工作区分组行：重命名 / 上移 / 在电脑上打开 / 删除。
+  void _showWorkspaceActions(String folder) {
+    final workspaces = ref.read(workspacesProvider.notifier);
+    final row = workspaces.findByFolder(folder);
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: row == null
+            ? Padding(
+                padding: const EdgeInsets.all(DshSpace.x5),
+                child: Text(
+                  '工作区信息尚未同步，请稍后重试',
+                  style: context.dshText.bodyMedium?.copyWith(
+                    color: context.dsh.secondaryText,
+                  ),
+                ),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DshSheetTitle(
+                    title: row.title.isEmpty ? folder : row.title,
+                    subtitle: row.path,
+                  ),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.drive_file_rename_outline,
+                      size: 22,
+                    ),
+                    title: const Text('重命名'),
+                    onTap: () {
+                      Navigator.of(sheetContext).pop();
+                      _showWorkspaceRenameDialog(row);
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.arrow_upward_rounded, size: 22),
+                    title: const Text('上移'),
+                    onTap: () {
+                      Navigator.of(sheetContext).pop();
+                      _moveWorkspaceUp(row);
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.computer_outlined, size: 22),
+                    title: const Text('在电脑上打开'),
+                    onTap: () {
+                      Navigator.of(sheetContext).pop();
+                      _openOnDesktop(row.path);
+                    },
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.folder_delete_outlined,
+                      size: 22,
+                      color: context.dsh.dangerRed,
+                    ),
+                    title: Text(
+                      '删除工作区',
+                      style: context.dshText.bodyLarge?.copyWith(
+                        color: context.dsh.dangerRed,
+                      ),
+                    ),
+                    subtitle: const Text('只移除注册，不删除电脑上的文件和会话'),
+                    onTap: () {
+                      Navigator.of(sheetContext).pop();
+                      _confirmDeleteWorkspace(row);
+                    },
+                  ),
+                  const SizedBox(height: DshSpace.x2),
+                ],
+              ),
+      ),
+    );
+  }
+
+  void _showWorkspaceRenameDialog(WorkspaceRow row) {
+    final controller = TextEditingController(text: row.title);
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('重命名工作区'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: '工作区名称'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final title = controller.text.trim();
+              if (title.isEmpty) return;
+              Navigator.of(dialogContext).pop();
+              try {
+                await ref
+                    .read(workspacesProvider.notifier)
+                    .rename(row.workspaceId, title);
+              } on AppException catch (e) {
+                if (mounted) showDshError(context, e.userMessage);
+              }
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _moveWorkspaceUp(WorkspaceRow row) async {
+    final before = ref
+        .read(workspacesProvider.notifier)
+        .workspaceBefore(row.workspaceId);
+    if (before == null) {
+      showDshError(context, '已经在最前面了');
+      return;
+    }
+    try {
+      await ref
+          .read(workspacesProvider.notifier)
+          .moveBefore(row.workspaceId, before);
+    } on AppException catch (e) {
+      if (mounted) showDshError(context, e.userMessage);
+    }
+  }
+
+  Future<void> _openOnDesktop(String path) async {
+    final api = ref.read(dshApiProvider);
+    if (api == null) return;
+    try {
+      if (!await api.canOpenWorkspacePath()) {
+        if (!mounted) return;
+        showDshError(context, '该 DSH 部署不支持远程打开路径');
+        return;
+      }
+      await api.openWorkspacePath(path, reveal: true);
+      if (mounted) showDshSnack(context, '已在电脑上打开');
+    } on AppException catch (e) {
+      if (mounted) showDshError(context, e.userMessage);
+    }
+  }
+
+  void _confirmDeleteWorkspace(WorkspaceRow row) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除工作区'),
+        content: Text(
+          '确定删除「${row.title.isEmpty ? folderNameOf(row.path) ?? row.path : row.title}」吗？'
+          '电脑上的文件和其中的会话都会保留。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: context.dsh.dangerRed,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              try {
+                await ref
+                    .read(workspacesProvider.notifier)
+                    .delete(row.workspaceId);
+                if (_selectedFolder != null &&
+                    folderNameOf(row.path) == _selectedFolder) {
+                  setState(() => _selectedFolder = null);
+                }
+              } on AppException catch (e) {
+                if (mounted) showDshError(context, e.userMessage);
+              }
+            },
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskRow(SessionSummary session) {
+    final p = context.dsh;
+    final pinned = ref.watch(pinnedIdsProvider).contains(session.sessionId);
+    final title = session.title ?? (session.blank ? '新任务' : '未命名任务');
+    // 行节奏 56（SPEC §3 实测 168px/3x）。
+    return InkWell(
+      onTap: () => _openSession(session),
+      onLongPress: () => _showTaskActions(session),
+      child: SizedBox(
+        height: 56,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: DshSpace.x6),
+          child: Row(
+            children: [
+              StatusDot(running: session.running),
+              const SizedBox(width: DshSpace.x4),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.dshText.bodyLarge,
+                ),
+              ),
+              if (pinned)
+                Icon(Icons.push_pin_rounded, size: 14, color: p.secondaryText),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 长按任务行：置顶 / 重命名 / 归档。
+  void _showTaskActions(SessionSummary session) {
+    final isPinned = ref.read(pinnedIdsProvider).contains(session.sessionId);
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DshSheetTitle(title: session.title ?? '新任务'),
+            ListTile(
+              leading: const Icon(Icons.push_pin_outlined, size: 22),
+              title: Text(isPinned ? '取消置顶' : '置顶'),
+              onTap: () async {
+                Navigator.of(sheetContext).pop();
+                try {
+                  final notifier = ref.read(pinnedIdsProvider.notifier);
+                  isPinned
+                      ? await notifier.unpin(session.sessionId)
+                      : await notifier.pin(session.sessionId);
+                } on AppException catch (e) {
+                  if (mounted) showDshError(context, e.userMessage);
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.drive_file_rename_outline, size: 22),
+              title: const Text('重命名'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _showRenameDialog(session);
+              },
+            ),
+            _workspaceMoveTile(sheetContext, session),
+            ListTile(
+              leading: const Icon(Icons.inventory_2_outlined, size: 22),
+              title: const Text('归档'),
+              onTap: () async {
+                Navigator.of(sheetContext).pop();
+                try {
+                  await ref
+                      .read(archivedIdsProvider.notifier)
+                      .archive(session.sessionId);
+                  ref.invalidate(tasksProvider);
+                } on AppException catch (e) {
+                  if (mounted) showDshError(context, e.userMessage);
+                }
+              },
+            ),
+            const SizedBox(height: DshSpace.x2),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 会话不在工作区首位时展示「在工作区中上移」。
+  Widget _workspaceMoveTile(BuildContext sheetContext, SessionSummary session) {
+    final workspaces = ref.read(workspacesProvider);
+    final row = workspaces
+        .where((item) => item.sessionIds.contains(session.sessionId))
+        .firstOrNull;
+    final before = row == null
+        ? null
+        : ref
+              .read(workspacesProvider.notifier)
+              .sessionBefore(row.workspaceId, session.sessionId);
+    if (row == null || before == null) return const SizedBox.shrink();
+    return ListTile(
+      leading: const Icon(Icons.arrow_upward_rounded, size: 22),
+      title: const Text('在工作区中上移'),
+      onTap: () async {
+        Navigator.of(sheetContext).pop();
+        try {
+          await ref
+              .read(workspacesProvider.notifier)
+              .moveSessionBefore(
+                workspaceId: row.workspaceId,
+                sessionId: session.sessionId,
+                beforeSessionId: before,
+              );
+        } on AppException catch (e) {
+          if (mounted) showDshError(context, e.userMessage);
+        }
+      },
+    );
+  }
+
+  void _showRenameDialog(SessionSummary session) {
+    final controller = TextEditingController(text: session.title ?? '');
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('重命名会话'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: '会话名称'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final title = controller.text.trim();
+              if (title.isEmpty) return;
+              Navigator.of(dialogContext).pop();
+              try {
+                await ref
+                    .read(dshApiProvider)
+                    ?.rename(session.sessionId, title);
+                ref.invalidate(tasksProvider);
+              } on AppException catch (e) {
+                if (mounted) showDshError(context, e.userMessage);
+              }
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildViewMoreFooter(AsyncValue<List<SessionSummary>> tasks) {
+    final p = context.dsh;
+    final sessions = tasks.value;
+    if (sessions == null) return const SizedBox.shrink();
+    final total = filterSessionsByFolder(
+      visibleSessions(
+        sessions,
+        archivedIds: ref.read(archivedIdsProvider),
+        pinnedIds: ref.read(pinnedIdsProvider),
+      ),
+      _selectedFolder,
+    ).length;
+    if (total <= _shownCount) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(left: DshSpace.x5, bottom: DshSpace.x3),
+      child: TextButton.icon(
+        onPressed: () => setState(() => _shownCount += _pageSize),
+        icon: Icon(Icons.more_horiz, size: 18, color: p.secondaryText),
+        label: Text(
+          '查看更多',
+          style: context.dshText.bodyMedium?.copyWith(color: p.secondaryText),
+        ),
+      ),
+    );
+  }
+
+  void _openNewTask() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const NewTaskPage()));
+  }
+
+  void _openSession(SessionSummary session) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => SessionPage(summary: session)),
+    );
+  }
+
+  void _showServerSwitcher() {
+    final currentId = ref.read(currentServerIdProvider);
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => Consumer(
+        builder: (context, sheetRef, _) {
+          final list = sheetRef.watch(serversProvider);
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const DshSheetTitle(title: '切换服务端'),
+                for (final server in list)
+                  ListTile(
+                    leading: Icon(
+                      server.mode == 'lan' ? Icons.wifi : Icons.public,
+                      size: 22,
+                    ),
+                    title: Text(
+                      server.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: server.id == currentId
+                        ? const Icon(Icons.check, size: 20)
+                        : null,
+                    onTap: server.id == currentId
+                        ? null
+                        : () {
+                            sheetRef
+                                .read(currentServerIdProvider.notifier)
+                                .setCurrent(server.id);
+                            sheetRef
+                                .read(serversProvider.notifier)
+                                .touch(server.id);
+                            Navigator.of(sheetContext).pop();
+                          },
+                  ),
+                const Divider(indent: DshSpace.x4, endIndent: DshSpace.x4),
+                ListTile(
+                  leading: const Icon(Icons.tune, size: 22),
+                  title: const Text('服务端管理'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ServersPage(),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// ⋯ 菜单：右上 popover（SPEC §4 结构规则 3）。
+  void _showMoreMenu(BuildContext anchorContext) {
+    final prefs = ref.read(taskPrefsProvider);
+    showDshPopoverMenu(
+      anchorContext,
+      sections: [
+        DshPopoverSection(
+          caption: '分组方式',
+          options: [
+            for (final mode in TaskGroupMode.values)
+              DshPopoverOption(
+                label: switch (mode) {
+                  TaskGroupMode.date => '日期',
+                  TaskGroupMode.workspace => '工作区',
+                  TaskGroupMode.status => '状态',
+                },
+                selected: prefs.groupMode == mode,
+                onTap: () =>
+                    ref.read(taskPrefsProvider.notifier).setGroupMode(mode),
+              ),
+          ],
+        ),
+        DshPopoverSection(
+          caption: '筛选',
+          options: [
+            DshPopoverOption(
+              label: '仅展示进行中的任务',
+              selected: prefs.onlyRunning,
+              onTap: () =>
+                  ref.read(taskPrefsProvider.notifier).toggleOnlyRunning(),
+            ),
+          ],
+        ),
+        DshPopoverSection(
+          options: [
+            DshPopoverOption(
+              label: '已归档',
+              icon: Icons.inventory_2_outlined,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const ArchivedPage()),
+              ),
+            ),
+            DshPopoverOption(
+              label: '服务端管理',
+              icon: Icons.tune,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const ServersPage()),
+              ),
+            ),
+            DshPopoverOption(
+              label: '设置',
+              icon: Icons.settings_outlined,
+              onTap: () => showDshSnack(context, '设置项开发中'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// FAB（SPEC §3：64 直径、图标 26、轻触感）。
+class _NewTaskFab extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _NewTaskFab({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.dsh;
+    return Tooltip(
+      message: '新建任务',
+      child: Semantics(
+        button: true,
+        label: '新建任务',
+        child: Material(
+          color: p.foreground,
+          shape: const CircleBorder(),
+          elevation: 6,
+          shadowColor: p.shadow,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              onTap();
+            },
+            child: SizedBox(
+              width: 64,
+              height: 64,
+              child: Icon(Icons.add, size: 26, color: p.onForeground),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.dsh;
+    // 视觉高 36 + 上下 4 触控缓冲 = 44 触控目标（SPEC §3）。
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(DshRadius.pill),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: DshMotion.fast,
+            curve: DshMotion.curve,
+            padding: const EdgeInsets.symmetric(
+              horizontal: DshSpace.x4,
+              vertical: DshSpace.x2,
+            ),
+            decoration: BoxDecoration(
+              color: selected ? p.foreground : p.chipGray,
+              borderRadius: BorderRadius.circular(DshRadius.pill),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[
+                  Icon(
+                    icon,
+                    size: 16,
+                    color: selected ? p.onForeground : p.secondaryText,
+                  ),
+                  const SizedBox(width: DshSpace.x1 + 2),
+                ],
+                Text(
+                  label,
+                  style: context.dshText.bodySmall?.copyWith(
+                    fontSize: 14,
+                    color: selected ? p.onForeground : p.secondaryText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

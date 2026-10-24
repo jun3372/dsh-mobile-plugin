@@ -1,0 +1,12 @@
+Original QRCode for JavaScript
+Copyright (c) 2009 Kazuhiko Arase
+http://www.d-project.com/
+
+Licensed under the MIT License.
+
+Parts of the QRCode encoder are adapted from the qrcode-terminal project's
+vendored QRCode implementation (node module conversions / refactoring),
+qrcode-terminal 0.12.0 (https://github.com/gtanner/qrcode-terminal),
+under the Apache License, Version 2.0; the license text is included in
+qrcode-terminal-APACHE-2.0.txt. The QRCode source itself retains its original
+MIT attribution in lib/vendor/QRCode/index.js.

@@ -21,7 +21,7 @@ void main() {
           serverName: 'zhoujundeMacBook-Air.local',
           onBack: () {},
           onFolder: () => folderTaps++,
-          onMore: () => moreTaps++,
+          onMore: (_) => moreTaps++,
           onTitleTap: () => titleTaps++,
         ),
       ),
@@ -55,7 +55,7 @@ void main() {
           serverName: null,
           onBack: () {},
           onFolder: () {},
-          onMore: () {},
+          onMore: (_) {},
         ),
       ),
     );

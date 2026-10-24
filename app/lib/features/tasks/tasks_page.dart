@@ -14,6 +14,8 @@ import 'archived_page.dart';
 import 'new_task_page.dart';
 import 'search_page.dart';
 import 'tasks_providers.dart';
+import 'widgets/session_context_menu.dart';
+import 'widgets/session_row_tile.dart';
 
 /// 首页任务列表（仿 Qoder CN：大标题+服务器切换、筛选 chips、分组列表、⋯ popover、FAB）。
 class TasksPage extends ConsumerStatefulWidget {
@@ -28,6 +30,13 @@ class _TasksPageState extends ConsumerState<TasksPage> {
   final _collapsedFolders = <String>{};
   String? _selectedFolder;
   int _shownCount = _pageSize;
+
+  @override
+  void dispose() {
+    // 浮层挂在 root navigator 上，页面销毁时若不收起会残留。
+    SessionContextMenu.dismissIfOpen();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,27 +65,22 @@ class _TasksPageState extends ConsumerState<TasksPage> {
   Widget _buildHeader(String serverName, AsyncValue<bool> connection) {
     final p = context.dsh;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        DshSpace.x5,
-        DshSpace.x3,
-        DshSpace.x3,
-        0,
-      ),
+      padding: DshHeaderMetrics.padding,
       child: Row(
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: DshHeaderMetrics.logo,
+            height: DshHeaderMetrics.logo,
             decoration: BoxDecoration(
               color: p.foreground,
-              borderRadius: BorderRadius.circular(DshRadius.leading),
+              borderRadius: BorderRadius.circular(DshRadius.thumb),
             ),
             alignment: Alignment.center,
             child: Text(
               'D',
               style: TextStyle(
                 color: p.onForeground,
-                fontSize: 16,
+                fontSize: DshHeaderMetrics.logoFontSize,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -94,11 +98,16 @@ class _TasksPageState extends ConsumerState<TasksPage> {
                       serverName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: context.dshText.displaySmall,
+                      style: context.dshText.displaySmall?.copyWith(
+                        fontSize: DshHeaderMetrics.title,
+                      ),
                     ),
                   ),
                   const SizedBox(width: DshSpace.x1),
-                  const Icon(Icons.keyboard_arrow_down_rounded, size: 24),
+                  const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: DshHeaderMetrics.dropdownIcon,
+                  ),
                 ],
               ),
             ),
@@ -141,7 +150,7 @@ class _TasksPageState extends ConsumerState<TasksPage> {
     }
     // 容器高 52 = chip 视觉 36 + 上下 4 触控缓冲 + 4 外边距（SPEC §3）。
     return SizedBox(
-      height: 52,
+      height: DshChip.rowHeight,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(
@@ -189,7 +198,11 @@ class _TasksPageState extends ConsumerState<TasksPage> {
           ),
           child: Row(
             children: [
-              Icon(Icons.wifi_off_rounded, size: 16, color: p.runningYellow),
+              Icon(
+                Icons.wifi_off_rounded,
+                size: DshIcon.chip,
+                color: p.runningYellow,
+              ),
               const SizedBox(width: DshSpace.x2),
               Expanded(
                 child: Text(
@@ -208,64 +221,71 @@ class _TasksPageState extends ConsumerState<TasksPage> {
   }
 
   Widget _buildList(AsyncValue<List<SessionSummary>> tasks, TaskPrefs prefs) {
-    return tasks.when(
-      skipLoadingOnReload: true,
-      loading: () =>
-          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-      error: (error, _) => ErrorView(
-        error: error,
-        onRetry: () {
-          ref.invalidate(connectionCheckProvider);
-          ref.invalidate(tasksProvider);
-        },
-      ),
-      data: (sessions) {
-        final archived = ref.watch(archivedIdsProvider);
-        final pinned = ref.watch(pinnedIdsProvider);
-        final workspaces = ref.watch(workspacesProvider);
-        final visible = filterSessionsByFolder(
-          visibleSessions(sessions, archivedIds: archived, pinnedIds: pinned),
-          _selectedFolder,
-        );
-        final groups = groupTasks(visible, prefs, workspaces: workspaces);
-        final rows = <Object>[
-          for (final group in _visibleGroups(groups)) ...[
-            group,
-            ...group.sessions,
-          ],
-        ];
-        if (rows.isEmpty) {
+    return NotificationListener<ScrollStartNotification>(
+      // 列表一开始滚动，锚定在行上的上下文菜单就失去意义，直接收起。
+      onNotification: (_) {
+        SessionContextMenu.dismissIfOpen();
+        return false;
+      },
+      child: tasks.when(
+        skipLoadingOnReload: true,
+        loading: () =>
+            const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        error: (error, _) => ErrorView(
+          error: error,
+          onRetry: () {
+            ref.invalidate(connectionCheckProvider);
+            ref.invalidate(tasksProvider);
+          },
+        ),
+        data: (sessions) {
+          final archived = ref.watch(archivedIdsProvider);
+          final pinned = ref.watch(pinnedIdsProvider);
+          final workspaces = ref.watch(workspacesProvider);
+          final visible = filterSessionsByFolder(
+            visibleSessions(sessions, archivedIds: archived, pinnedIds: pinned),
+            _selectedFolder,
+          );
+          final groups = groupTasks(visible, prefs, workspaces: workspaces);
+          final rows = <Object>[
+            for (final group in _visibleGroups(groups)) ...[
+              group,
+              ...group.sessions,
+            ],
+          ];
+          if (rows.isEmpty) {
+            return RefreshIndicator(
+              onRefresh: _refresh,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(
+                    height: 320,
+                    child: EmptyState(
+                      icon: Icons.chat_bubble_outline_rounded,
+                      message: '暂无任务',
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
           return RefreshIndicator(
             onRefresh: _refresh,
-            child: ListView(
+            child: ListView.builder(
               physics: const AlwaysScrollableScrollPhysics(),
-              children: const [
-                SizedBox(
-                  height: 320,
-                  child: EmptyState(
-                    icon: Icons.chat_bubble_outline_rounded,
-                    message: '暂无任务',
-                  ),
-                ),
-              ],
+              padding: const EdgeInsets.only(top: 4, bottom: 96),
+              itemCount: rows.length,
+              itemBuilder: (context, index) {
+                final row = rows[index];
+                return row is TaskGroup
+                    ? _buildGroupRow(row)
+                    : _buildTaskRow(row as SessionSummary);
+              },
             ),
           );
-        }
-        return RefreshIndicator(
-          onRefresh: _refresh,
-          child: ListView.builder(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.only(top: 4, bottom: 96),
-            itemCount: rows.length,
-            itemBuilder: (context, index) {
-              final row = rows[index];
-              return row is TaskGroup
-                  ? _buildGroupRow(row)
-                  : _buildTaskRow(row as SessionSummary);
-            },
-          ),
-        );
-      },
+        },
+      ),
     );
   }
 
@@ -319,7 +339,11 @@ class _TasksPageState extends ConsumerState<TasksPage> {
         child: Row(
           children: [
             // 参考稿分组标题恒为次级灰（实测 #9D9D9D），展开/折叠只改箭头方向。
-            Icon(Icons.folder_outlined, size: 16, color: p.secondaryText),
+            Icon(
+              Icons.folder_outlined,
+              size: DshIcon.chip,
+              color: p.secondaryText,
+            ),
             const SizedBox(width: DshSpace.x2),
             Expanded(
               child: Text(
@@ -339,7 +363,11 @@ class _TasksPageState extends ConsumerState<TasksPage> {
               turns: expanded ? 0.25 : 0,
               duration: DshMotion.fast,
               curve: DshMotion.curve,
-              child: Icon(Icons.chevron_right, size: 18, color: p.tertiaryText),
+              child: Icon(
+                Icons.chevron_right,
+                size: DshIcon.tool,
+                color: p.tertiaryText,
+              ),
             ),
           ],
         ),
@@ -375,7 +403,7 @@ class _TasksPageState extends ConsumerState<TasksPage> {
                   ListTile(
                     leading: const Icon(
                       Icons.drive_file_rename_outline,
-                      size: 22,
+                      size: DshIcon.nav,
                     ),
                     title: const Text('重命名'),
                     onTap: () {
@@ -384,7 +412,10 @@ class _TasksPageState extends ConsumerState<TasksPage> {
                     },
                   ),
                   ListTile(
-                    leading: const Icon(Icons.arrow_upward_rounded, size: 22),
+                    leading: const Icon(
+                      Icons.arrow_upward_rounded,
+                      size: DshIcon.nav,
+                    ),
                     title: const Text('上移'),
                     onTap: () {
                       Navigator.of(sheetContext).pop();
@@ -392,7 +423,10 @@ class _TasksPageState extends ConsumerState<TasksPage> {
                     },
                   ),
                   ListTile(
-                    leading: const Icon(Icons.computer_outlined, size: 22),
+                    leading: const Icon(
+                      Icons.computer_outlined,
+                      size: DshIcon.nav,
+                    ),
                     title: const Text('在电脑上打开'),
                     onTap: () {
                       Navigator.of(sheetContext).pop();
@@ -402,7 +436,7 @@ class _TasksPageState extends ConsumerState<TasksPage> {
                   ListTile(
                     leading: Icon(
                       Icons.folder_delete_outlined,
-                      size: 22,
+                      size: DshIcon.nav,
                       color: context.dsh.dangerRed,
                     ),
                     title: Text(
@@ -534,125 +568,105 @@ class _TasksPageState extends ConsumerState<TasksPage> {
   }
 
   Widget _buildTaskRow(SessionSummary session) {
-    final p = context.dsh;
     final pinned = ref.watch(pinnedIdsProvider).contains(session.sessionId);
-    final title = session.title ?? (session.blank ? '新任务' : '未命名任务');
-    // 行节奏 56（SPEC §3 实测 168px/3x）。
-    return InkWell(
-      onTap: () => _openSession(session),
-      onLongPress: () => _showTaskActions(session),
-      child: SizedBox(
-        height: 56,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: DshSpace.x6),
-          child: Row(
-            children: [
-              StatusDot(running: session.running),
-              const SizedBox(width: DshSpace.x4),
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.dshText.bodyLarge,
-                ),
-              ),
-              if (pinned)
-                Icon(Icons.push_pin_rounded, size: 14, color: p.secondaryText),
-            ],
-          ),
-        ),
+    // Builder 提供行的锚点上下文，长按时据此取全局矩形。
+    return Builder(
+      builder: (rowContext) => InkWell(
+        onTap: () => _openSession(session),
+        onLongPress: () => _openRowMenu(rowContext, session),
+        child: SessionRowTile(session: session, pinned: pinned),
       ),
     );
   }
 
-  /// 长按任务行：置顶 / 重命名 / 归档。
-  void _showTaskActions(SessionSummary session) {
-    final isPinned = ref.read(pinnedIdsProvider).contains(session.sessionId);
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            DshSheetTitle(title: session.title ?? '新任务'),
-            ListTile(
-              leading: const Icon(Icons.push_pin_outlined, size: 22),
-              title: Text(isPinned ? '取消置顶' : '置顶'),
-              onTap: () async {
-                Navigator.of(sheetContext).pop();
-                try {
-                  final notifier = ref.read(pinnedIdsProvider.notifier);
-                  isPinned
-                      ? await notifier.unpin(session.sessionId)
-                      : await notifier.pin(session.sessionId);
-                } on AppException catch (e) {
-                  if (mounted) showDshError(context, e.userMessage);
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.drive_file_rename_outline, size: 22),
-              title: const Text('重命名'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _showRenameDialog(session);
-              },
-            ),
-            _workspaceMoveTile(sheetContext, session),
-            ListTile(
-              leading: const Icon(Icons.inventory_2_outlined, size: 22),
-              title: const Text('归档'),
-              onTap: () async {
-                Navigator.of(sheetContext).pop();
-                try {
-                  await ref
-                      .read(archivedIdsProvider.notifier)
-                      .archive(session.sessionId);
-                  ref.invalidate(tasksProvider);
-                } on AppException catch (e) {
-                  if (mounted) showDshError(context, e.userMessage);
-                }
-              },
-            ),
-            const SizedBox(height: DshSpace.x2),
-          ],
-        ),
-      ),
+  /// 长按会话行：整页高斯模糊，该行保持清晰并在其下方浮出操作菜单。
+  Future<void> _openRowMenu(
+    BuildContext rowContext,
+    SessionSummary session,
+  ) async {
+    final box = rowContext.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return;
+    HapticFeedback.selectionClick();
+    final pinned = ref.read(pinnedIdsProvider).contains(session.sessionId);
+    await showSessionContextMenu(
+      rowContext,
+      anchorRect: box.localToGlobal(Offset.zero) & box.size,
+      preview: SessionRowTile(session: session, pinned: pinned),
+      actions: _sessionActions(session, pinned),
     );
   }
 
-  /// 会话不在工作区首位时展示「在工作区中上移」。
-  Widget _workspaceMoveTile(BuildContext sheetContext, SessionSummary session) {
+  /// 菜单动作一律只用宿主已有的能力：置顶（本地偏好）、重命名、工作区内上移、归档。
+  List<SessionMenuAction> _sessionActions(SessionSummary session, bool pinned) {
+    return [
+      SessionMenuAction(
+        label: pinned ? '取消置顶' : '置顶',
+        icon: pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+        onTap: () async {
+          try {
+            final notifier = ref.read(pinnedIdsProvider.notifier);
+            pinned
+                ? await notifier.unpin(session.sessionId)
+                : await notifier.pin(session.sessionId);
+          } on AppException catch (e) {
+            if (mounted) showDshError(context, e.userMessage);
+          }
+        },
+      ),
+      SessionMenuAction(
+        label: '重命名',
+        icon: Icons.drive_file_rename_outline,
+        onTap: () => _showRenameDialog(session),
+      ),
+      if (_sessionMoveUpTarget(session) case final target?)
+        SessionMenuAction(
+          label: '在工作区中上移',
+          icon: Icons.arrow_upward_rounded,
+          onTap: () async {
+            try {
+              await ref
+                  .read(workspacesProvider.notifier)
+                  .moveSessionBefore(
+                    workspaceId: target.workspaceId,
+                    sessionId: session.sessionId,
+                    beforeSessionId: target.beforeSessionId,
+                  );
+            } on AppException catch (e) {
+              if (mounted) showDshError(context, e.userMessage);
+            }
+          },
+        ),
+      SessionMenuAction(
+        label: '归档',
+        icon: Icons.inventory_2_outlined,
+        onTap: () async {
+          try {
+            await ref
+                .read(archivedIdsProvider.notifier)
+                .archive(session.sessionId);
+            ref.invalidate(tasksProvider);
+          } on AppException catch (e) {
+            if (mounted) showDshError(context, e.userMessage);
+          }
+        },
+      ),
+    ];
+  }
+
+  /// 会话不在工作区首位时返回上移目标，否则 null（菜单不展示该项）。
+  ({String workspaceId, String beforeSessionId})? _sessionMoveUpTarget(
+    SessionSummary session,
+  ) {
     final workspaces = ref.read(workspacesProvider);
     final row = workspaces
         .where((item) => item.sessionIds.contains(session.sessionId))
         .firstOrNull;
-    final before = row == null
-        ? null
-        : ref
-              .read(workspacesProvider.notifier)
-              .sessionBefore(row.workspaceId, session.sessionId);
-    if (row == null || before == null) return const SizedBox.shrink();
-    return ListTile(
-      leading: const Icon(Icons.arrow_upward_rounded, size: 22),
-      title: const Text('在工作区中上移'),
-      onTap: () async {
-        Navigator.of(sheetContext).pop();
-        try {
-          await ref
-              .read(workspacesProvider.notifier)
-              .moveSessionBefore(
-                workspaceId: row.workspaceId,
-                sessionId: session.sessionId,
-                beforeSessionId: before,
-              );
-        } on AppException catch (e) {
-          if (mounted) showDshError(context, e.userMessage);
-        }
-      },
-    );
+    if (row == null) return null;
+    final before = ref
+        .read(workspacesProvider.notifier)
+        .sessionBefore(row.workspaceId, session.sessionId);
+    if (before == null) return null;
+    return (workspaceId: row.workspaceId, beforeSessionId: before);
   }
 
   void _showRenameDialog(SessionSummary session) {
@@ -709,7 +723,11 @@ class _TasksPageState extends ConsumerState<TasksPage> {
       padding: const EdgeInsets.only(left: DshSpace.x5, bottom: DshSpace.x3),
       child: TextButton.icon(
         onPressed: () => setState(() => _shownCount += _pageSize),
-        icon: Icon(Icons.more_horiz, size: 18, color: p.secondaryText),
+        icon: Icon(
+          Icons.more_horiz,
+          size: DshIcon.tool,
+          color: p.secondaryText,
+        ),
         label: Text(
           '查看更多',
           style: context.dshText.bodyMedium?.copyWith(color: p.secondaryText),
@@ -746,7 +764,7 @@ class _TasksPageState extends ConsumerState<TasksPage> {
                   ListTile(
                     leading: Icon(
                       server.mode == 'lan' ? Icons.wifi : Icons.public,
-                      size: 22,
+                      size: DshIcon.nav,
                     ),
                     title: Text(
                       server.name,
@@ -754,7 +772,7 @@ class _TasksPageState extends ConsumerState<TasksPage> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     trailing: server.id == currentId
-                        ? const Icon(Icons.check, size: 20)
+                        ? const Icon(Icons.check, size: DshIcon.action)
                         : null,
                     onTap: server.id == currentId
                         ? null
@@ -770,7 +788,7 @@ class _TasksPageState extends ConsumerState<TasksPage> {
                   ),
                 const Divider(indent: DshSpace.x4, endIndent: DshSpace.x4),
                 ListTile(
-                  leading: const Icon(Icons.tune, size: 22),
+                  leading: const Icon(Icons.tune, size: DshIcon.nav),
                   title: const Text('服务端管理'),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
@@ -876,9 +894,13 @@ class _NewTaskFab extends StatelessWidget {
               onTap();
             },
             child: SizedBox(
-              width: 64,
-              height: 64,
-              child: Icon(Icons.add, size: 26, color: p.onForeground),
+              width: DshButton.fab,
+              height: DshButton.fab,
+              child: Icon(
+                Icons.add,
+                size: DshButton.fabIcon,
+                color: p.onForeground,
+              ),
             ),
           ),
         ),
@@ -929,7 +951,7 @@ class _FilterChip extends StatelessWidget {
                 if (icon != null) ...[
                   Icon(
                     icon,
-                    size: 16,
+                    size: DshIcon.chip,
                     color: selected ? p.onForeground : p.secondaryText,
                   ),
                   const SizedBox(width: DshSpace.x1 + 2),

@@ -9,10 +9,20 @@ String? folderNameOf(String? path) {
       : trimmed;
 }
 
+/// 容错解析时间：毫秒时间戳（num）或 ISO 字符串，均缺失时返回 null。
+DateTime? _parseSessionTime(Object? value) {
+  if (value is num) {
+    return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+  }
+  if (value is String && value.isNotEmpty) return DateTime.tryParse(value);
+  return null;
+}
+
 /// session/list 返回的会话摘要（fromJson 容错：缺字段落默认值）。
 class SessionSummary {
   final String sessionId;
   final String? title;
+  final DateTime? createdAt;
   final DateTime? updatedAt;
   final bool running;
   final bool blank;
@@ -23,6 +33,7 @@ class SessionSummary {
   const SessionSummary({
     required this.sessionId,
     this.title,
+    this.createdAt,
     this.updatedAt,
     this.running = false,
     this.blank = false,
@@ -46,6 +57,7 @@ class SessionSummary {
     return SessionSummary(
       sessionId: sessionId,
       title: title ?? this.title,
+      createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       running: running ?? this.running,
       blank: blank ?? this.blank,
@@ -69,11 +81,8 @@ class SessionSummary {
     return SessionSummary(
       sessionId: json['sessionId'] as String? ?? '',
       title: title,
-      updatedAt: json['updatedAt'] is num
-          ? DateTime.fromMillisecondsSinceEpoch(
-              (json['updatedAt'] as num).toInt(),
-            )
-          : null,
+      createdAt: _parseSessionTime(json['createdAt']),
+      updatedAt: _parseSessionTime(json['updatedAt']),
       running: json['running'] == true,
       blank: json['blank'] == true,
       agentAvailable: json['agentAvailable'] == true,

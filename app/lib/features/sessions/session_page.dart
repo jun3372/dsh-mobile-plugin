@@ -25,6 +25,7 @@ import 'session_providers.dart';
 import 'widgets/approval_card.dart';
 import 'widgets/chat_pane.dart';
 import 'widgets/queue_dock.dart';
+import 'widgets/session_details_sheet.dart';
 import 'widgets/session_header.dart';
 import 'widgets/session_status_bar.dart';
 import 'widgets/trace_pane.dart';
@@ -89,11 +90,12 @@ class _SessionPageState extends ConsumerState<SessionPage> {
                 onBack: () => Navigator.of(context).pop(),
                 onFolder: _openWorkspaceFiles,
                 onMore: _showSessionMenu,
+                onTitleTap: _showSessionDetails,
               ),
               TabBar(
                 tabs: const [
-                  Tab(text: '对话'),
-                  Tab(text: '轨迹'),
+                  Tab(text: '对话', height: 26),
+                  Tab(text: '轨迹', height: 26),
                 ],
                 labelColor: p.foreground,
                 unselectedLabelColor: p.secondaryText,
@@ -139,7 +141,10 @@ class _SessionPageState extends ConsumerState<SessionPage> {
               title: ref.read(sessionProvider(_key)).value?.title ?? '新任务',
             ),
             ListTile(
-              leading: const Icon(Icons.drive_file_rename_outline, size: 22),
+              leading: const Icon(
+                Icons.drive_file_rename_outline,
+                size: DshIcon.nav,
+              ),
               title: const Text('重命名'),
               onTap: () {
                 Navigator.of(sheetContext).pop();
@@ -147,7 +152,7 @@ class _SessionPageState extends ConsumerState<SessionPage> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.call_split_rounded, size: 22),
+              leading: const Icon(Icons.call_split_rounded, size: DshIcon.nav),
               title: const Text('分叉新会话'),
               subtitle: const Text('从当前历史复制一份继续'),
               onTap: () async {
@@ -156,7 +161,7 @@ class _SessionPageState extends ConsumerState<SessionPage> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.tune, size: 22),
+              leading: const Icon(Icons.tune, size: DshIcon.nav),
               title: const Text('模型选择'),
               onTap: () {
                 Navigator.of(sheetContext).pop();
@@ -166,6 +171,25 @@ class _SessionPageState extends ConsumerState<SessionPage> {
             const SizedBox(height: DshSpace.x2),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 点击头部标题：从底部弹出当前会话详情（任务 ID / 元数据）。
+  void _showSessionDetails() {
+    final view = ref.read(sessionProvider(_key)).value;
+    final server = ref.read(currentServerProvider);
+    final cwd = view?.cwd ?? widget.summary.cwd;
+    showSessionDetailsSheet(
+      context,
+      details: SessionDetails(
+        sessionId: _key.sessionId,
+        title: view?.title ?? widget.summary.title,
+        projectName: folderNameOf(cwd),
+        model: view?.selectedModel,
+        environment: server?.origin.host,
+        createdAt: widget.summary.createdAt,
+        updatedAt: widget.summary.updatedAt,
       ),
     );
   }

@@ -291,7 +291,7 @@ class _QuestionSheetBodyState extends State<_QuestionSheetBody> {
                         ? '等待已超时…'
                         : '剩余 ${_countdownLabel(_remainingMs!)}',
                     style: context.dshText.labelSmall?.copyWith(
-                      fontSize: 10,
+                      fontSize: 11,
                       color: _remainingMs! <= 30000
                           ? p.dangerRed
                           : p.secondaryText,
@@ -621,7 +621,7 @@ class _RecBadge extends StatelessWidget {
       child: Text(
         '推荐',
         style: context.dshText.labelSmall?.copyWith(
-          fontSize: 10,
+          fontSize: 11,
           color: p.secondaryText,
         ),
       ),
@@ -647,7 +647,7 @@ class _PagePill extends StatelessWidget {
       child: Text(
         label,
         style: context.dshText.labelSmall?.copyWith(
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: FontWeight.w600,
           color: p.secondaryText,
         ),

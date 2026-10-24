@@ -562,16 +562,6 @@ class SessionNotifier extends AsyncNotifier<SessionViewState> {
     return result;
   }
 
-  /// 运行中把全部排队消息立即插队发出（Web 空输入时的主按钮语义）。
-  Future<void> steerQueued() async {
-    final current = state.value;
-    if (current == null) return;
-    for (final item in current.queue) {
-      if (item.isLocal) continue;
-      await steerQueueItem(item.itemId);
-    }
-  }
-
   /// 停止当前回合。
   Future<void> cancelTurn() async {
     final api = _api;
@@ -586,23 +576,28 @@ class SessionNotifier extends AsyncNotifier<SessionViewState> {
     }
   }
 
-  /// 编辑一条仍在排队的消息文本。
-  Future<void> editQueueItem(String itemId, String text) {
-    return _updateQueueItem(itemId, {
-      'kind': 'edit',
-      'content': [
-        {'type': 'text', 'text': text},
-      ],
-    });
-  }
-
   /// 撤回一条排队消息。
   Future<void> removeQueueItem(String itemId) =>
       _updateQueueItem(itemId, {'kind': 'remove'});
 
-  /// 把一条排队消息立即发送（插队执行）。
-  Future<void> steerQueueItem(String itemId) =>
-      _updateQueueItem(itemId, {'kind': 'steer'});
+  /// 打断当前回合并立即发送该队列消息（⚡ 立即发送）。
+  ///
+  /// 宿主的 `steer` 只是把消息注入进行中的回合、不打断当前工作；这里先取消
+  /// 当前回合（宿主 cancel 保留 inbox），再把消息移出队列并作为新 prompt
+  /// 立即发出。附件从本地 pending 记录按 rpcId 恢复（队列投影只有摘要）。
+  Future<void> steerImmediately(QueuedMessage item) async {
+    if (item.isLocal) return;
+    await cancelTurn();
+    final replica = _replica;
+    final pending = (replica == null || item.rpcId == null)
+        ? null
+        : replica.pending.byId(item.rpcId!);
+    final attachments = pending?.attachments ?? const [];
+    await _updateQueueItem(item.itemId, {'kind': 'remove'});
+    if (item.text.trim().isNotEmpty || attachments.isNotEmpty) {
+      await send(item.text, attachments: attachments);
+    }
+  }
 
   Future<void> _updateQueueItem(
     String itemId,

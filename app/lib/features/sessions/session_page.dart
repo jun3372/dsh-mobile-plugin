@@ -303,7 +303,11 @@ class _SessionPageState extends ConsumerState<SessionPage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (view != null)
-            QueueDock(queue: view.queue, onAction: _onQueueAction),
+            QueueDock(
+              queue: view.queue,
+              canSteer: view.running,
+              onAction: _onQueueAction,
+            ),
           if (planReview case final pending?)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
@@ -395,7 +399,6 @@ class _SessionPageState extends ConsumerState<SessionPage> {
             notifier.send(text, attachments: attachments, mode: mode),
         executeCommand: (line, attachments) =>
             notifier.executeCommand(line, attachments),
-        steerQueued: notifier.steerQueued,
       ),
     );
     // 菜单里的纯 UI 动作（打开模型/权限/计划）由页面处理。
@@ -533,53 +536,19 @@ class _SessionPageState extends ConsumerState<SessionPage> {
     final notifier = ref.read(sessionProvider(_key).notifier);
     try {
       switch (action) {
-        case QueueItemAction.edit:
-          if (item.text.isEmpty) {
-            _showStub('图片消息暂不支持编辑文本');
-            return;
-          }
-          final text = await _showQueueEditDialog(item.text);
-          if (text == null || text.isEmpty) return;
-          await notifier.editQueueItem(item.itemId, text);
-        case QueueItemAction.steer:
-          await notifier.steerQueueItem(item.itemId);
-        case QueueItemAction.remove:
+        case QueueItemAction.recall:
+          // 撤回编辑：移出队列并把文本回填输入框；图片消息无法恢复
+          // 附件，按纯撤回处理（仅移出队列）。
           await notifier.removeQueueItem(item.itemId);
+          if (item.text.isNotEmpty) await _composer?.recallToInput(item.text);
+        case QueueItemAction.steer:
+          // ⚡ 立即发送：先打断当前回合，再把该消息立刻发出（新回合）。
+          await notifier.steerImmediately(item);
       }
     } on AppException catch (e) {
       if (mounted) _showError(e.userMessage);
     }
   }
-
-  Future<String?> _showQueueEditDialog(String initial) {
-    final controller = TextEditingController(text: initial);
-    return showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('编辑排队消息'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          minLines: 1,
-          maxLines: 5,
-          decoration: const InputDecoration(labelText: '消息内容'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.of(dialogContext).pop(controller.text.trim()),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showStub(String message) => showDshSnack(context, message);
 
   void _showError(String message) => showDshError(context, message);
 }

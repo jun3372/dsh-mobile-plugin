@@ -1,7 +1,7 @@
 /// 输入区控制器：文档状态、触发菜单联动、IME 保护、占位文案与提交生命周期。
 ///
 /// 语义对齐 dsh Web 的 `dsh-client-ui-composer`：
-/// - 运行中空草稿时主按钮变成「发出全部排队消息」；
+/// - 运行中空草稿时主按钮是「停止」，排队消息经队列条目逐条处理；
 /// - 运行中有内容时按用户选择的补位方式（排队/打断）发送，选择跨会话记住
 ///   （补位方式切换 UI 已移除，mode 保留持久化值供发送语义使用）；
 /// - 草稿以 `/命令` 开头时走 `commands/execute`，而不是当成普通 prompt；
@@ -40,16 +40,12 @@ class ComposerEnvironment {
   final bool planMode;
   final String? workspaceName;
 
-  /// 队列里是否有可插队的消息（决定空输入时主按钮是否可用）。
-  final bool hasQueued;
-
   const ComposerEnvironment({
     this.ready = false,
     this.running = false,
     this.offline = false,
     this.planMode = false,
     this.workspaceName,
-    this.hasQueued = false,
   });
 
   @override
@@ -59,12 +55,11 @@ class ComposerEnvironment {
       other.running == running &&
       other.offline == offline &&
       other.planMode == planMode &&
-      other.workspaceName == workspaceName &&
-      other.hasQueued == hasQueued;
+      other.workspaceName == workspaceName;
 
   @override
   int get hashCode =>
-      Object.hash(ready, running, offline, planMode, workspaceName, hasQueued);
+      Object.hash(ready, running, offline, planMode, workspaceName);
 }
 
 /// 提交出口：由页面用会话 Notifier 的 tear-off 注入，composer 子系统不依赖 riverpod。
@@ -83,14 +78,7 @@ class ComposerPorts {
   )
   executeCommand;
 
-  /// 把当前排队消息全部立即插队发出。
-  final Future<void> Function() steerQueued;
-
-  const ComposerPorts({
-    required this.send,
-    required this.executeCommand,
-    required this.steerQueued,
-  });
+  const ComposerPorts({required this.send, required this.executeCommand});
 }
 
 class ComposerController extends ChangeNotifier {
@@ -194,7 +182,7 @@ class ComposerController extends ChangeNotifier {
       ComposerPlaceholderState.unavailable => '正在恢复会话…',
       ComposerPlaceholderState.parentOffline => '连接已断开，重连后可继续发送',
       ComposerPlaceholderState.plan => '规划模式：描述目标或提出问题',
-      ComposerPlaceholderState.steerQueue => '输入补充说明，或发出全部排队消息',
+      ComposerPlaceholderState.steerQueue => '输入补充说明，发送后进入消息队列',
       ComposerPlaceholderState.workspace =>
         // 带工作区名时不再塞触发符提示，避免占位文案换行撑高输入卡。
         '在 ${(workspace ?? '').split('/').last} 中描述任务',
@@ -371,21 +359,15 @@ class ComposerController extends ChangeNotifier {
     }
   }
 
-  /// 运行中且输入为空：把排队消息全部立即发出。
-  Future<void> steerAll() async {
-    if (sending) return;
-    sending = true;
+  /// 队列消息撤回：把文本回填到输入框进行编辑（已有内容时追加一行）。
+  Future<void> recallToInput(String value) async {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return;
+    final existing = draftText;
+    final merged = existing.trim().isEmpty ? trimmed : '$existing\n$trimmed';
+    _applyDraftEdit(merged, merged.length);
+    saveDraft();
     notifyListeners();
-    try {
-      await ports.steerQueued();
-    } on AppException catch (error) {
-      showNotice(error.userMessage);
-    } catch (_) {
-      showNotice('插队失败，请重试');
-    } finally {
-      sending = false;
-      notifyListeners();
-    }
   }
 
   /// 从「+」菜单直接执行一条宿主指令（不带草稿与附件）。

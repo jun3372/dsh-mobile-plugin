@@ -97,7 +97,6 @@ class _ComposerBarState extends State<ComposerBar> {
         offline: view.isOffline,
         planMode: view.plan?.active ?? false,
         workspaceName: view.cwd,
-        hasQueued: view.queue.isNotEmpty,
       ),
     );
   }
@@ -403,51 +402,39 @@ class _ComposerBarState extends State<ComposerBar> {
     );
   }
 
-  /// 运行中：停止 + 主按钮；空输入时主按钮改为发出全部排队消息。
+  /// 底行右侧合并后的唯一主按钮：有内容→发送；运行中且无内容→停止；
+  /// 空闲且无内容→禁用态发送（图标占位，不可点）。
+  /// 「发出全部排队消息」一键插队已移除，排队消息经队列条目逐条处理。
   List<Widget> _buildActions() {
-    final running = _controller.environment.running;
-    final hasContent = _controller.hasContent;
-    final stop = running
-        ? Material(
-            color: context.dsh.accentBlue,
-            shape: const CircleBorder(),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: widget.actions.cancelTurn,
-              child: SizedBox(
-                width: DshButton.composer,
-                height: DshButton.composer,
-                child: Icon(
-                  Icons.stop_rounded,
-                  size: 17,
-                  // 深色 accentBlue 较亮时用黑标保证对比。
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.black
-                      : Colors.white,
-                ),
-              ),
-            ),
-          )
-        : null;
-    final Widget primary;
-    if (running && !hasContent) {
-      primary = PrimaryRoundButton(
-        icon: Icons.queue_music_rounded,
-        size: DshButton.composer,
-        color: context.dsh.foreground,
-        semanticLabel: '发出全部排队消息',
-        onTap: _controller.environment.hasQueued ? _controller.steerAll : null,
-      );
-    } else {
-      primary = PrimaryRoundButton(
+    if (_controller.hasContent) {
+      return [
+        PrimaryRoundButton(
+          icon: Icons.arrow_upward_rounded,
+          size: DshButton.composer,
+          semanticLabel: '发送',
+          onTap: _controller.canSend ? _controller.submit : null,
+        ),
+      ];
+    }
+    if (_controller.environment.running) {
+      return [
+        PrimaryRoundButton(
+          icon: Icons.stop_rounded,
+          size: DshButton.composer,
+          color: context.dsh.accentBlue,
+          semanticLabel: '停止',
+          onTap: widget.actions.cancelTurn,
+        ),
+      ];
+    }
+    return [
+      PrimaryRoundButton(
         icon: Icons.arrow_upward_rounded,
         size: DshButton.composer,
         semanticLabel: '发送',
-        onTap: _controller.canSend ? _controller.submit : null,
-      );
-    }
-    if (stop == null) return [primary];
-    return [stop, const SizedBox(width: DshSpace.x2), primary];
+        onTap: null,
+      ),
+    ];
   }
 
   // ------------------------------------------------------------------ 弹层入口

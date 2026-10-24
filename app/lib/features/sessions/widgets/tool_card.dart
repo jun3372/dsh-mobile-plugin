@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/models/transcript_node.dart';
+import 'code_highlight.dart';
 
 /// 工具调用卡片：名称 + 参数/结果可展开。
 class ToolCard extends StatelessWidget {
@@ -61,13 +62,13 @@ class ToolCard extends StatelessWidget {
           ),
           children: [
             if ((node.toolArguments ?? '').isNotEmpty) ...[
-              _SectionLabel('参数'),
-              _CodeBlock(node.toolArguments!),
+              ToolSectionLabel('参数'),
+              ToolCodeBlock(node.toolArguments!),
             ],
             if ((node.toolResult ?? '').isNotEmpty) ...[
               const SizedBox(height: 8),
-              _SectionLabel(failed ? '错误' : '结果'),
-              _CodeBlock(node.toolResult!, error: failed),
+              ToolSectionLabel(failed ? '错误' : '结果'),
+              ToolCodeBlock(node.toolResult!, error: failed),
             ],
           ],
         ),
@@ -76,10 +77,10 @@ class ToolCard extends StatelessWidget {
   }
 }
 
-class _SectionLabel extends StatelessWidget {
+class ToolSectionLabel extends StatelessWidget {
   final String text;
 
-  const _SectionLabel(this.text);
+  const ToolSectionLabel(this.text, {super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -98,15 +99,29 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-class _CodeBlock extends StatelessWidget {
+class ToolCodeBlock extends StatelessWidget {
   final String text;
   final bool error;
 
-  const _CodeBlock(this.text, {this.error = false});
+  /// 传入 re_highlight 语言名（如 'json'）时做语法高亮，解析失败退回纯文本。
+  final String? language;
+
+  const ToolCodeBlock(
+    this.text, {
+    super.key,
+    this.error = false,
+    this.language,
+  });
 
   @override
   Widget build(BuildContext context) {
     final p = context.dsh;
+    final base = TextStyle(
+      fontSize: 12,
+      height: 1.4,
+      color: error ? p.dangerRed : p.foreground,
+      fontFamilyFallback: const ['Menlo', 'monospace'],
+    );
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(maxHeight: 220),
@@ -116,16 +131,29 @@ class _CodeBlock extends StatelessWidget {
         borderRadius: BorderRadius.circular(DshRadius.thumb),
       ),
       child: SingleChildScrollView(
-        child: SelectableText(
-          text,
-          style: TextStyle(
-            fontSize: 12,
-            height: 1.4,
-            color: error ? p.dangerRed : p.foreground,
-            fontFamilyFallback: const ['Menlo', 'monospace'],
-          ),
+        child: SelectableText.rich(
+          _highlightedSpan(context, base) ?? TextSpan(text: text, style: base),
         ),
       ),
     );
+  }
+
+  /// 语法高亮：highlightLines 按行返回，这里拼回整段 TextSpan。
+  TextSpan? _highlightedSpan(BuildContext context, TextStyle base) {
+    if (language == null) return null;
+    final p = context.dsh;
+    final lines = DshCodeHighlight.highlightLines(
+      source: text,
+      language: language,
+      base: base,
+      theme: dshCodeTheme(p, Theme.of(context).brightness),
+    );
+    if (lines == null) return null;
+    final children = <InlineSpan>[];
+    for (var i = 0; i < lines.length; i++) {
+      children.addAll(lines[i]);
+      if (i < lines.length - 1) children.add(const TextSpan(text: '\n'));
+    }
+    return TextSpan(children: children);
   }
 }

@@ -103,10 +103,19 @@ class _ComposerBarState extends State<ComposerBar> {
   }
 
   void _onFocusChanged() {
-    if (!_focus.hasFocus) _controller.closeMenu();
+    if (!_focus.hasFocus) {
+      _controller.closeMenu();
+      // 失焦时清除一次性展开请求，允许回到收起态。
+      if (_expandRequested && mounted) setState(() => _expandRequested = false);
+    }
     // 聚焦/失焦驱动重建，切换收起态与展开态。
     if (mounted) setState(() {});
   }
+
+  /// 点击展开请求（一次性）：收起态点击后先据此展开挂载输入框，键盘
+  /// 真正弹起（viewInsets>0）或出现内容后即由常规条件接管；键盘没起来
+  /// 且无内容时在 build 中复位，避免卡在展开态。
+  bool _expandRequested = false;
 
   /// 收起态：键盘未激活、无任何内容（文字+附件）且会话未运行时，输入条
   /// 退化为单行胶囊（左「+」+ 占位文字 + 右侧聚焦圆钮），对齐参考样式。
@@ -114,6 +123,7 @@ class _ComposerBarState extends State<ComposerBar> {
   /// 用键盘可见性而非 FocusNode.hasFocus 判定：移动端键盘收起后 Flutter
   /// 仍保留焦点，按 hasFocus 会一直保持展开，不符合「键盘未激活即收起」。
   bool get _collapsed =>
+      !_expandRequested &&
       MediaQuery.viewInsetsOf(context).bottom <= 0 &&
       !_controller.hasContent &&
       !_controller.environment.running;
@@ -142,6 +152,10 @@ class _ComposerBarState extends State<ComposerBar> {
   @override
   Widget build(BuildContext context) {
     final p = context.dsh;
+    // 键盘真正弹起后交给 viewInsets 常规条件接管，清除一次性展开请求。
+    if (_expandRequested && MediaQuery.viewInsetsOf(context).bottom > 0) {
+      _expandRequested = false;
+    }
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
@@ -217,6 +231,9 @@ class _ComposerBarState extends State<ComposerBar> {
   }
 
   /// 收起态单行胶囊：左「+」+ 占位文字 + 右侧黑色聚焦圆钮（对齐参考图）。
+  ///
+  /// 中间不是真实 TextField——两个 TextField 抢焦点会导致激活事件冲突，
+  /// 这里只放一个占位文本，点击胶囊任意处换出展开态的真实输入框。
   Widget _buildCollapsedRow({required Key key}) {
     final p = context.dsh;
     final view = widget.view;
@@ -238,9 +255,20 @@ class _ComposerBarState extends State<ComposerBar> {
           ),
         ),
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: _buildField(),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(DshRadius.pill),
+            onTap: _expandAndFocus,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+              child: Text(
+                _controller.placeholderText,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.dshText.bodyMedium?.copyWith(
+                  color: p.secondaryText,
+                ),
+              ),
+            ),
           ),
         ),
         PrimaryRoundButton(
@@ -281,13 +309,17 @@ class _ComposerBarState extends State<ComposerBar> {
     );
   }
 
-  /// 圆钮点击：聚焦输入框并唤起键盘。键盘收起后焦点可能仍被保留，
-  /// 单纯 requestFocus 是空操作，需再显式 TextInput.show 弹回键盘。
+  /// 圆钮/占位文字点击：先强制展开让真实输入框挂载，下一帧再聚焦并唤起
+  /// 键盘。收起态下输入框尚未挂载，直接 requestFocus 落在未附加的
+  /// FocusNode 上是空操作；键盘收起后焦点也可能被保留，故再显式
+  /// TextInput.show 保证键盘弹回。
   void _expandAndFocus() {
-    _focus.requestFocus();
-    if (_focus.hasFocus) {
+    setState(() => _expandRequested = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _focus.requestFocus();
       SystemChannels.textInput.invokeMethod<void>('TextInput.show');
-    }
+    });
   }
 
   Widget _buildField() {

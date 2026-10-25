@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../features/notifications/background_alert_controller.dart';
 import '../features/servers/onboarding_page.dart';
 import '../features/servers/servers_providers.dart';
 import '../features/tasks/tasks_page.dart';
@@ -45,11 +46,26 @@ class DshApp extends StatelessWidget {
   }
 }
 
-class RootGate extends ConsumerWidget {
+class RootGate extends ConsumerStatefulWidget {
   const RootGate({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RootGate> createState() => _RootGateState();
+}
+
+class _RootGateState extends ConsumerState<RootGate> {
+  @override
+  void initState() {
+    super.initState();
+    // 首帧后再挂载等待输入通知控制器：其依赖链（mux 等）的首次构建
+    // 若落在 widget build 阶段会触发 markNeedsBuild 断言。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(backgroundAlertControllerProvider);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final server = ref.watch(currentServerProvider);
     return server == null ? const OnboardingPage() : const TasksPage();
   }

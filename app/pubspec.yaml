@@ -54,6 +54,9 @@ dependencies:
   shared_preferences_ohos: ^2.2.0
   # 纯 Dart SVG 渲染（vector_graphics），无平台插件，鸿蒙可直接复用。
   flutter_svg: ^2.3.0
+  # 会话等待输入（ask_user_question / 计划评审）时的本地通知；
+  # 鸿蒙实现来自下方 dependency_overrides 的 CPF-Flutter 移植版。
+  flutter_local_notifications: ^19.5.0
 
 dev_dependencies:
   flutter_test:
@@ -110,7 +113,13 @@ flutter:
 
 # mobile_scanner 官方包无 OpenHarmony 实现，用 CPF-Flutter 社区移植
 # （基于上游 7.1.4，含 ohos 平台；Android/iOS 实现与上游一致）。
+# flutter_local_notifications 同理：workspace 仓库，插件本体在 flutter_local_notifications/ 子目录。
 dependency_overrides:
+  flutter_local_notifications:
+    git:
+      url: https://gitcode.com/CPF-Flutter/fluttertpc_flutter_local_notifications.git
+      path: flutter_local_notifications
+      ref: 19.5.0-ohos-1.0.0
   mobile_scanner:
     git:
       url: https://gitcode.com/CPF-Flutter/fluttertpc_mobile_scanner.git

@@ -98,31 +98,52 @@ final currentServerProvider = Provider<ServerProfile?>((ref) {
   return null;
 });
 
-/// 当前服务端共享的 HTTP 客户端（单飞登录/刷新、401 重放）。
-///
-/// 切换服务端会重建并关闭旧实例；WS 握手也复用这里的 token。
-final apiClientProvider = Provider<ApiClient?>((ref) {
-  final server = ref.watch(currentServerProvider);
-  if (server == null) return null;
-  final client = ApiClient(origin: server.origin, password: server.password);
-  ref.onDispose(client.close);
-  return client;
+/// 按服务端 id 的 HTTP 客户端家族：多服务端并行保活时各自独立
+/// （单飞登录/刷新、401 重放互不影响）。
+final apiClientFamilyProvider = Provider.family<ApiClient?, String>((ref, id) {
+  for (final server in ref.watch(serversProvider)) {
+    if (server.id != id) continue;
+    final client = ApiClient(origin: server.origin, password: server.password);
+    ref.onDispose(client.close);
+    return client;
+  }
+  return null;
 });
 
-/// 当前服务端的业务 API；未绑定时为 null。生命周期跟随 [apiClientProvider]。
-final dshApiProvider = Provider<DshApi?>((ref) {
-  final client = ref.watch(apiClientProvider);
+/// 当前服务端共享的 HTTP 客户端。
+///
+/// 切换服务端不会关闭旧实例——家族实例由仍在其上的保活订阅持有。
+final apiClientProvider = Provider<ApiClient?>((ref) {
+  final id = ref.watch(currentServerIdProvider);
+  if (id == null) return null;
+  return ref.watch(apiClientFamilyProvider(id));
+});
+
+/// 按服务端 id 的业务 API。
+final dshApiFamilyProvider = Provider.family<DshApi?, String>((ref, id) {
+  final client = ref.watch(apiClientFamilyProvider(id));
   if (client == null) return null;
   return DshApi(client);
 });
 
-/// 当前服务端的 mux 组合：一条 `/api/remote.mux` + 服务器级长活流。
+/// 当前服务端的业务 API；未绑定时为 null。
+final dshApiProvider = Provider<DshApi?>((ref) {
+  final id = ref.watch(currentServerIdProvider);
+  if (id == null) return null;
+  return ref.watch(dshApiFamilyProvider(id));
+});
+
+/// 按服务端 id 的 mux 组合：一条 `/api/remote.mux` + 服务器级长活流。
 ///
-/// 首次读取即开始连接；切换服务端时整体释放。
-final muxHubProvider = Provider<MuxHub?>((ref) {
-  final server = ref.watch(currentServerProvider);
-  final client = ref.watch(apiClientProvider);
-  final api = ref.watch(dshApiProvider);
+/// 首次读取即开始连接；非 autoDispose，创建后即使不再被当前页使用也保活
+/// （多服务端后台通知依赖这里的长活流），直到服务端被解绑。
+final muxHubFamilyProvider = Provider.family<MuxHub?, String>((ref, id) {
+  final client = ref.watch(apiClientFamilyProvider(id));
+  final api = ref.watch(dshApiFamilyProvider(id));
+  ServerProfile? server;
+  for (final candidate in ref.watch(serversProvider)) {
+    if (candidate.id == id) server = candidate;
+  }
   if (server == null || client == null || api == null) return null;
   final hub = MuxHub(
     origin: server.origin,
@@ -138,6 +159,14 @@ final muxHubProvider = Provider<MuxHub?>((ref) {
   ref.onDispose(hub.dispose);
   hub.start();
   return hub;
+});
+
+/// 当前服务端的 mux 组合；其余已绑定服务端的 hub 由
+/// [muxHubFamilyProvider] 的保活订阅方（如等待输入通知控制器）持有。
+final muxHubProvider = Provider<MuxHub?>((ref) {
+  final id = ref.watch(currentServerIdProvider);
+  if (id == null) return null;
+  return ref.watch(muxHubFamilyProvider(id));
 });
 
 /// 连接探活：能拉到会话列表视为在线。

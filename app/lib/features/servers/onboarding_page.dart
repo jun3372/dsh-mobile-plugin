@@ -1,23 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme.dart';
-import '../../widgets/common.dart';
-import 'pairing_controller.dart';
+import '../../widgets/dsh_logo.dart';
 import 'scan_page.dart';
 
 /// 未绑定任何服务端时的引导页。
-class OnboardingPage extends ConsumerWidget {
+class OnboardingPage extends StatelessWidget {
   const OnboardingPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    ref.listen(pairingControllerProvider, (previous, next) {
-      if (next.status == PairingStatus.failed) {
-        showDshError(context, next.message);
-      }
-    });
-    final p = context.dsh;
+  Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -25,23 +17,8 @@ class OnboardingPage extends ConsumerWidget {
           child: Column(
             children: [
               const Spacer(flex: 2),
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: p.foreground,
-                  borderRadius: BorderRadius.circular(DshRadius.bubble),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  'D',
-                  style: TextStyle(
-                    color: p.onForeground,
-                    fontSize: 34,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
+              // 与首页头部一致：SVG 鲸鱼标志，随深浅色主题自动换色。
+              const DshLogo(width: 72, height: 72),
               const SizedBox(height: DshSpace.x6),
               Text(
                 '探索未至之境',
@@ -51,7 +28,10 @@ class OnboardingPage extends ConsumerWidget {
               Text(
                 '扫码绑定 DSH 宿主的手机连接网关，\n远程查看任务与会话进展。',
                 textAlign: TextAlign.center,
-                style: context.dshText.bodyMedium?.copyWith(height: 1.5),
+                style: context.dshText.bodyMedium?.copyWith(
+                  height: 1.5,
+                  color: context.dsh.secondaryText,
+                ),
               ),
               const Spacer(flex: 3),
               SizedBox(

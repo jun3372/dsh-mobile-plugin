@@ -7,6 +7,7 @@ import '../../core/errors.dart';
 import '../../core/models/dsh_session.dart';
 import '../../core/mux/workspace_hub.dart';
 import '../../widgets/common.dart';
+import '../../widgets/dsh_logo.dart';
 import '../servers/servers_page.dart';
 import '../servers/servers_providers.dart';
 import '../sessions/session_page.dart';
@@ -63,13 +64,10 @@ class _TasksPageState extends ConsumerState<TasksPage> {
       padding: DshHeaderMetrics.padding,
       child: Row(
         children: [
-          // 与新建会话页头部一致：使用 DSH 鲸鱼 logo（透明底）替代占位「D」。
-          Image.asset(
-            'assets/icon/logo.png',
+          // 与新建会话页头部一致：SVG 鲸鱼标志，随深浅色主题自动换色。
+          const DshLogo(
             width: DshHeaderMetrics.logo,
             height: DshHeaderMetrics.logo,
-            fit: BoxFit.contain,
-            semanticLabel: 'DSH',
           ),
           const SizedBox(width: DshSpace.x2),
           Expanded(
@@ -103,6 +101,8 @@ class _TasksPageState extends ConsumerState<TasksPage> {
           Builder(
             builder: (buttonContext) => CircleButton(
               icon: Icons.more_horiz,
+              iconSize: DshIcon.header,
+              size: DshHeaderMetrics.button,
               tooltip: '更多',
               onTap: () => _showMoreMenu(buttonContext),
             ),

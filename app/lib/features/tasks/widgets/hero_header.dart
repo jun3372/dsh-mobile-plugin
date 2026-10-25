@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme.dart';
+import '../../../widgets/dsh_logo.dart';
 
 /// 新建会话页头部：logo 占位 +「探索未至之境」+「预览版」徽章。
 class HeroHeader extends StatelessWidget {
@@ -15,12 +16,8 @@ class HeroHeader extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Image.asset(
-            'assets/icon/logo.png',
-            height: 32,
-            fit: BoxFit.contain,
-            semanticLabel: 'DSH',
-          ),
+          // SVG 标志：随主题着色（浅色墨黑 / 深色亮白）。
+          const DshLogo(height: 32),
           const SizedBox(width: DshSpace.x2),
           Flexible(
             child: Text(

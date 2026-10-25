@@ -90,6 +90,7 @@ DSH Web 手机图标弹窗内五个菜单：
 | **运行日志** | 集中展示并复制局域网、Cloudflare、frpc 和网关的中文运行记录 |
 
 - 更换端口会重启共享网关及已启用隧道；更换密码会撤销对应入口旧认证；只打开/保存页面不会轮换随机密码
+- 首选端口被占用时网关自动顺延到下一个可用端口（最多 +20），配置中的首选端口保持不变，二维码与连接地址使用实际生效端口
 - 每条隧道可单独选择下载加速源（官方 GitHub / ghfast.top / ghproxy.net / 自定义 HTTPS 地址），仅自动下载客户端时生效
 - 字段全貌见 [`docs/CONFIGURATION_V13.md`](docs/CONFIGURATION_V13.md)；frps 服务端部署见 [`docs/FRPC_USAGE.md`](docs/FRPC_USAGE.md)
 

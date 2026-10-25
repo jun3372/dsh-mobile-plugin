@@ -125,3 +125,16 @@ test('restarting DSH restores enabled LAN/public connections; disabled networks 
   assert.equal(status.lan.running,true);assert.equal(status.public.running,false);
   assert.equal(tunnel3.launches.length,0);
 });
+
+test('gateway falls back to the next free port when the preferred port is occupied',async t=>{
+  const net=(await import('node:net')).default;
+  const blocker=net.createServer();t.after(()=>blocker.close());
+  await new Promise(resolve=>blocker.listen(0,'0.0.0.0',resolve));
+  const occupied=blocker.address().port;
+  const {s}=await fixture(t);
+  const st=await s.configure('lan',{enabled:true,port:occupied});
+  assert.equal(s.settings.gateway.port,occupied);
+  assert.equal(st.gateway.port,occupied+1);
+  assert.equal(s.gateway.port,occupied+1);
+  assert.equal(s.gateway.server.address().port,occupied+1);
+});

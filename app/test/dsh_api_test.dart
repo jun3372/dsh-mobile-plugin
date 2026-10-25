@@ -64,18 +64,26 @@ void main() {
           {'sessionId': 's2', 'blank': true},
           'junk',
           {'no': 'sessionId'},
+          {
+            'sessionId': 's3',
+            'origin': 'subagent',
+            'parentSessionId': 's1',
+            'cwd': '/Users/jun/projects/weaver',
+          },
         ],
       }),
     );
     final sessions = await api.listSessions();
     // 'junk' 非 map 直接丢弃；{no: sessionId} 容错为空 id 保留。
-    expect(sessions, hasLength(3));
+    expect(sessions, hasLength(4));
     expect(sessions[0].title, '框架与 Spring Boot 区别');
     expect(sessions[0].running, isTrue);
     expect(sessions[0].folderName, 'weaver');
     expect(sessions[0].asOfSeq, 18);
+    expect(sessions[0].isSubagent, isFalse);
     expect(sessions[1].blank, isTrue);
     expect(sessions[2].sessionId, isEmpty);
+    expect(sessions[3].isSubagent, isTrue);
   });
 
   test('listWorkspaceDirectory 使用 workspaceFileScopeId + 相对路径', () async {

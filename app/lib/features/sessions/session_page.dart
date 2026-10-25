@@ -120,7 +120,7 @@ class _SessionPageState extends ConsumerState<SessionPage> {
               ),
               // 键盘弹起时隐藏底部状态栏：输入态不需要「轮数·工具·tokens」，
               // 且省出的高度吸收 composer + 键盘对 Column 的溢出（此前溢出 16px）。
-              if (view != null && !keyboardOpen) SessionStatusBar(view: view),
+              if (view != null && keyboardOpen) SessionStatusBar(view: view),
               _buildInputArea(view),
             ],
           ),

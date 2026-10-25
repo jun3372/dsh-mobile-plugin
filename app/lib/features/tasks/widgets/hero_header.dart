@@ -36,20 +36,20 @@ class HeroHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: DshSpace.x2),
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: DshSpace.x2,
-              vertical: 3,
-            ),
-            decoration: BoxDecoration(
-              color: p.accentBlue.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(DshRadius.pill),
-            ),
-            child: Text(
-              '预览版',
-              style: context.dshText.labelSmall?.copyWith(color: p.accentBlue),
-            ),
-          ),
+          // Container(
+          //   padding: const EdgeInsets.symmetric(
+          //     horizontal: DshSpace.x2,
+          //     vertical: 3,
+          //   ),
+          //   decoration: BoxDecoration(
+          //     color: p.accentBlue.withValues(alpha: 0.12),
+          //     borderRadius: BorderRadius.circular(DshRadius.pill),
+          //   ),
+          //   child: Text(
+          //     '预览版',
+          //     style: context.dshText.labelSmall?.copyWith(color: p.accentBlue),
+          //   ),
+          // ),
         ],
       ),
     );

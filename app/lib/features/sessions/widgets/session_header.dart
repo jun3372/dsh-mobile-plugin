@@ -43,7 +43,7 @@ class SessionHeader extends StatelessWidget {
             tooltip: '返回',
             onTap: onBack,
           ),
-          const SizedBox(width: DshSpace.x4),
+          const SizedBox(width: DshSpace.x1),
           Expanded(
             child: Material(
               type: MaterialType.transparency,
@@ -92,7 +92,7 @@ class SessionHeader extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: DshSpace.x2),
+          const SizedBox(width: DshSpace.x1),
           _HeaderActionsPill(onFolder: onFolder, onMore: onMore),
         ],
       ),

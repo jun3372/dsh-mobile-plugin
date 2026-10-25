@@ -54,12 +54,16 @@ class ServersNotifier extends Notifier<List<ServerProfile>> {
     }
   }
 
+  /// 只写穿持久化，不更新响应式状态：lastUsedAt 不参与任何 UI 展示与排序，
+  /// 一旦同步进 state 会生成新 List，连带重建所有 watch 整表的 family provider
+  /// （全部 ApiClient/MuxHub 断开重连、后台等待输入通知被撤下重弹）。
+  /// 新值下次冷启动从 ServerStore 载入。
   Future<void> touch(String id) async {
-    state = [
-      for (final s in state)
-        s.id == id ? s.copyWith(lastUsedAt: DateTime.now()) : s,
+    final now = DateTime.now();
+    final servers = [
+      for (final s in state) s.id == id ? s.copyWith(lastUsedAt: now) : s,
     ];
-    await ref.read(serverStoreProvider).saveServers(state);
+    await ref.read(serverStoreProvider).saveServers(servers);
   }
 }
 
@@ -98,16 +102,25 @@ final currentServerProvider = Provider<ServerProfile?>((ref) {
   return null;
 });
 
+/// 取列表中指定 id 的档案（无则 null）。作为 select 选择器使用：
+/// 只有本 id 的档案实例变化才会触发依赖方重建，其他服务端增删改不连坐。
+ServerProfile? _profileById(List<ServerProfile> servers, String id) {
+  for (final server in servers) {
+    if (server.id == id) return server;
+  }
+  return null;
+}
+
 /// 按服务端 id 的 HTTP 客户端家族：多服务端并行保活时各自独立
 /// （单飞登录/刷新、401 重放互不影响）。
 final apiClientFamilyProvider = Provider.family<ApiClient?, String>((ref, id) {
-  for (final server in ref.watch(serversProvider)) {
-    if (server.id != id) continue;
-    final client = ApiClient(origin: server.origin, password: server.password);
-    ref.onDispose(client.close);
-    return client;
-  }
-  return null;
+  final server = ref.watch(
+    serversProvider.select((servers) => _profileById(servers, id)),
+  );
+  if (server == null) return null;
+  final client = ApiClient(origin: server.origin, password: server.password);
+  ref.onDispose(client.close);
+  return client;
 });
 
 /// 当前服务端共享的 HTTP 客户端。
@@ -140,10 +153,9 @@ final dshApiProvider = Provider<DshApi?>((ref) {
 final muxHubFamilyProvider = Provider.family<MuxHub?, String>((ref, id) {
   final client = ref.watch(apiClientFamilyProvider(id));
   final api = ref.watch(dshApiFamilyProvider(id));
-  ServerProfile? server;
-  for (final candidate in ref.watch(serversProvider)) {
-    if (candidate.id == id) server = candidate;
-  }
+  final server = ref.watch(
+    serversProvider.select((servers) => _profileById(servers, id)),
+  );
   if (server == null || client == null || api == null) return null;
   final hub = MuxHub(
     origin: server.origin,

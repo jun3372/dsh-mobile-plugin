@@ -68,4 +68,44 @@ void main() {
     await prefs.remove('dsh.currentServerId');
     expect(container().read(currentServerIdProvider), 's1');
   });
+
+  test('touch 只写持久化，不更新列表状态也不触发 family 重建', () async {
+    final c = container();
+    addTearDown(c.dispose);
+    await c
+        .read(serversProvider.notifier)
+        .upsert(profile('s1'), makeCurrent: false);
+    await c.read(serversProvider.notifier).upsert(profile('s2'));
+
+    var builds = 0;
+    c.listen(
+      serversProvider.select((servers) => _byId(servers, 's1')),
+      (_, _) => builds++,
+    );
+
+    final before = c.read(serversProvider);
+    await c.read(serversProvider.notifier).touch('s1');
+
+    // 响应式状态保持同一 List 实例（select 订阅者不触发）。
+    expect(identical(c.read(serversProvider), before), isTrue);
+    expect(builds, 0);
+
+    // 持久化侧已更新：新容器冷启动读到新的 lastUsedAt。
+    final store = c.read(serverStoreProvider);
+    final persisted = store.loadServers().firstWhere((s) => s.id == 's1');
+    final stale = before.firstWhere((s) => s.id == 's1');
+    expect(
+      persisted.lastUsedAt.isAfter(stale.lastUsedAt) ||
+          persisted.lastUsedAt.isAtSameMomentAs(stale.lastUsedAt),
+      isTrue,
+      reason: 'lastUsedAt 应随 touch 落盘（同毫秒内允许相等）',
+    );
+  });
+}
+
+ServerProfile? _byId(List<ServerProfile> servers, String id) {
+  for (final server in servers) {
+    if (server.id == id) return server;
+  }
+  return null;
 }

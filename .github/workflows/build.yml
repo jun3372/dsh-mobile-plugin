@@ -49,11 +49,14 @@ jobs:
           if [ -z "$SM" ]; then echo "sdkmanager not found under $SDK"; exit 1; fi
           echo "$(dirname "$SM")" >> "$GITHUB_PATH"
           yes | "$SM" --licenses >/dev/null || true
-          "$SM" --install "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+          # 不安装 NDK：镜像没有 Flutter 默认的 28.2.13676358，而 App 依赖的插件
+          # 均无 externalNativeBuild，AGP 不会去解析 NDK。
+          "$SM" --install "platforms;android-36" "build-tools;36.0.0"
       - uses: ./.github/actions/setup-flutter-ohos
         with:
           version: ${{ env.FLUTTER_OHOS_VERSION }}
           platform: android
+          enable-ohos: 'false'
       - name: Build APK
         working-directory: app
         run: |
@@ -81,6 +84,7 @@ jobs:
         with:
           version: ${{ env.FLUTTER_OHOS_VERSION }}
           platform: ios
+          enable-ohos: 'false'
       - name: Build iOS (no codesign)
         working-directory: app
         run: |

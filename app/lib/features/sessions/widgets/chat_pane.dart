@@ -12,6 +12,7 @@ import '../../../core/models/goal_info.dart';
 import '../../../core/models/transcript_node.dart';
 import '../../../core/session/session_replica.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/memo_row.dart';
 import 'approval_card.dart';
 import 'connection_banner.dart';
 import 'load_older_row.dart';
@@ -99,7 +100,8 @@ class _ChatPaneState extends ConsumerState<ChatPane>
         _didInitialScroll = true;
         _jumpToBottom(animate: false);
       } else if (wasNearBottom) {
-        _jumpToBottom(animate: live);
+        // 流式贴底用直跳：animateTo 会被高频 delta 反复打断重启。
+        _jumpToBottom(animate: false);
       }
     });
 
@@ -150,7 +152,15 @@ class _ChatPaneState extends ConsumerState<ChatPane>
         LoadOlderRow(loading: view.loadingOlder, onTap: _loadOlder),
       if (_hasGoalPlan(view))
         _GoalPlanCard(view: view, onGoalTap: _showGoalActions),
-      for (final node in view.nodes) _buildNode(node),
+      // 每行带节点 id key，行内容经 MemoTranscriptRow 按节点实例缓存：
+      // 流式发布（40ms 一次）只重建变化的最后一条 live 消息，
+      // 其余行直接复用上次构建的子树，Element 层整段跳过 rebuild。
+      for (final node in view.nodes)
+        MemoTranscriptRow(
+          key: ValueKey(node.id),
+          node: node,
+          builder: _buildNode,
+        ),
       for (final approval in view.approvals)
         ApprovalCard(
           key: ValueKey('approval-${approval.eventId}'),
@@ -209,11 +219,11 @@ class _ChatPaneState extends ConsumerState<ChatPane>
       case TranscriptKind.assistant:
         return _buildAssistantNode(node);
       case TranscriptKind.tool:
-        return ToolCompactRow(key: ValueKey(node.id), node: node);
+        return ToolCompactRow(node: node);
       case TranscriptKind.error:
       case TranscriptKind.notice:
       case TranscriptKind.compaction:
-        return TurnNoticeCard(key: ValueKey(node.id), node: node);
+        return TurnNoticeCard(node: node);
     }
   }
 

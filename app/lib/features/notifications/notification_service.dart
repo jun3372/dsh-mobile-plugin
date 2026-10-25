@@ -2,7 +2,9 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 /// 本地通知能力的可注入抽象（单测用假实现替换）。
 abstract class NotificationApi {
-  Future<void> init();
+  /// 初始化；[onTap] 收到通知点击（含冷启动由通知拉起的 launch 场景），
+  /// payload 由弹通知时的 [show] payload 原样回传。
+  Future<void> init({void Function(String payload)? onTap});
 
   Future<bool> requestPermission();
 
@@ -10,6 +12,7 @@ abstract class NotificationApi {
     required int id,
     required String title,
     required String body,
+    String? payload,
   });
 
   Future<void> cancel(int id);
@@ -27,7 +30,7 @@ class LocalNotificationsApi implements NotificationApi {
   bool _initialized = false;
 
   @override
-  Future<void> init() async {
+  Future<void> init({void Function(String payload)? onTap}) async {
     if (_initialized) return;
     await _plugin.initialize(
       const InitializationSettings(
@@ -37,6 +40,11 @@ class LocalNotificationsApi implements NotificationApi {
         // 模块 media 资源名（entry/src/main/resources/base/media/icon.png）。
         ohos: OhosInitializationSettings('icon'),
       ),
+      onDidReceiveNotificationResponse: (response) {
+        final payload = response.payload;
+        if (onTap == null || payload == null || payload.isEmpty) return;
+        onTap(payload);
+      },
     );
     await _plugin
         .resolvePlatformSpecificImplementation<
@@ -50,6 +58,20 @@ class LocalNotificationsApi implements NotificationApi {
             importance: Importance.high,
           ),
         );
+    // 冷启动由通知拉起：launch 详情不会触发上面的 response 回调，须主动查。
+    if (onTap != null) {
+      try {
+        final launch = await _plugin.getNotificationAppLaunchDetails();
+        final payload = launch?.notificationResponse?.payload;
+        if (launch?.didNotificationLaunchApp == true &&
+            payload != null &&
+            payload.isNotEmpty) {
+          onTap(payload);
+        }
+      } on Exception {
+        // launch 查询失败不影响常规点击链路。
+      }
+    }
     _initialized = true;
   }
 
@@ -94,6 +116,7 @@ class LocalNotificationsApi implements NotificationApi {
     required int id,
     required String title,
     required String body,
+    String? payload,
   }) async {
     if (!_initialized) return;
     await _plugin.show(
@@ -118,6 +141,7 @@ class LocalNotificationsApi implements NotificationApi {
           importance: OhosImportance.high,
         ),
       ),
+      payload: payload,
     );
   }
 

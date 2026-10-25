@@ -31,11 +31,19 @@ export 'tool_card.dart' show ToolSectionLabel, ToolCodeBlock;
   return ('调用工具', Icons.build_outlined);
 }
 
+// 摘要/语言探测结果缓存：流式期间同一工具行每帧重建，避免重复 jsonDecode。
+// 键为入参字符串；超过上限整体清空（简单防膨胀，命中率远够用）。
+const int _memoCap = 512;
+final Map<String, String> _argSummaryMemo = {};
+final Map<String, String?> _langMemo = {};
+
 /// 从工具参数 JSON 提取一行摘要：优先 command/path 等首个字符串字段，
 /// 解析失败回退工具名本身。
 String toolArgSummary(TranscriptNode node) {
   final raw = node.toolArguments;
   if (raw != null && raw.isNotEmpty) {
+    final cached = _argSummaryMemo[raw];
+    if (cached != null) return cached;
     try {
       final args = jsonDecode(raw);
       if (args is Map) {
@@ -52,7 +60,10 @@ String toolArgSummary(TranscriptNode node) {
         for (final key in keys) {
           final value = args[key];
           if (value is String && value.trim().isNotEmpty) {
-            return value.trim().replaceAll('\n', ' ');
+            final summary = value.trim().replaceAll('\n', ' ');
+            if (_argSummaryMemo.length >= _memoCap) _argSummaryMemo.clear();
+            _argSummaryMemo[raw] = summary;
+            return summary;
           }
         }
       }
@@ -65,7 +76,22 @@ String toolArgSummary(TranscriptNode node) {
 
 /// 轻量语言探测：工具参数/结果可能是 JSON、shell、XML、YAML 或纯文本，
 /// 探测不出返回 null（走纯文本，不高亮）。
+final RegExp _shellHeadRegExp = RegExp(
+  r'^(?:\$|sudo |cd |ls |cat |head |tail |grep |find |rg |rm |mv |cp |mkdir |touch |chmod |git |flutter |dart |npm |pnpm |yarn |go |python3? |node |curl |wget |echo |which |df |ps )',
+);
+final RegExp _yamlKeyRegExp = RegExp(r'^[\w.\-/]+:(\s|$)', multiLine: true);
+final RegExp _iniSectionRegExp = RegExp(r'^\[[\w.-]+\]$', multiLine: true);
+final RegExp _iniPairRegExp = RegExp(r'^[\w.-]+=[^\n]*$', multiLine: true);
+
 String? detectCodeLanguage(String text) {
+  if (_langMemo.length >= _memoCap) _langMemo.clear();
+  if (_langMemo.containsKey(text)) return _langMemo[text];
+  final result = _detectCodeLanguageUncached(text);
+  _langMemo[text] = result;
+  return result;
+}
+
+String? _detectCodeLanguageUncached(String text) {
   final t = text.trim();
   if (t.isEmpty) return null;
   if (t.startsWith('{') || t.startsWith('[')) {
@@ -80,19 +106,15 @@ String? detectCodeLanguage(String text) {
     return 'xml';
   }
   // shell：常见命令开头，或带管道/链式/重定向的命令行。
-  final shellHead = RegExp(
-    r'^(?:\$|sudo |cd |ls |cat |head |tail |grep |find |rg |rm |mv |cp |mkdir |touch |chmod |git |flutter |dart |npm |pnpm |yarn |go |python3? |node |curl |wget |echo |which |df |ps )',
-  );
-  if (shellHead.hasMatch(t) ||
+  if (_shellHeadRegExp.hasMatch(t) ||
       (!t.contains(':\n') &&
           !t.startsWith(' ') &&
           (t.contains(' | ') || t.contains(' && ') || t.contains(' 2>')))) {
     return 'bash';
   }
   // YAML：行首「key:」多行；INI：section 头或 key=value。
-  if (RegExp(r'^[\w.\-/]+:(\s|$)', multiLine: true).hasMatch(t)) return 'yaml';
-  if (RegExp(r'^\[[\w.-]+\]$', multiLine: true).hasMatch(t) ||
-      RegExp(r'^[\w.-]+=[^\n]*$', multiLine: true).hasMatch(t)) {
+  if (_yamlKeyRegExp.hasMatch(t)) return 'yaml';
+  if (_iniSectionRegExp.hasMatch(t) || _iniPairRegExp.hasMatch(t)) {
     return 'ini';
   }
   return null;

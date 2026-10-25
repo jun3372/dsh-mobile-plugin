@@ -8,6 +8,7 @@ import '../../core/models/dsh_models.dart';
 import '../servers/servers_providers.dart';
 import '../tasks/tasks_providers.dart';
 import 'notification_service.dart';
+import 'notification_tap.dart';
 
 final notificationApiProvider = Provider<NotificationApi>(
   (ref) => LocalNotificationsApi(),
@@ -74,11 +75,15 @@ class BackgroundAlertNotifier extends Notifier<int> {
 
   Future<void> _bootstrap(NotificationApi api, Map<String, MuxHub> hubs) async {
     try {
-      await api.init();
+      await api.init(onTap: handleNotificationTap);
       // 冷启动必然在前台，清掉上次进程残留的通知。
       await api.cancelAll();
     } catch (_) {}
-    await _ensurePermissionAsked();
+    try {
+      await _ensurePermissionAsked();
+    } catch (_) {
+      // 权限询问失败不阻塞通知补同步。
+    }
     // init 期间可能已有事件到达；此时补一次同步。
     for (final entry in hubs.entries) {
       if (ref.read(muxHubFamilyProvider(entry.key)) == null) continue;
@@ -117,7 +122,18 @@ class BackgroundAlertNotifier extends Notifier<int> {
       }
       unawaited(
         api
-            .show(id: plan.id, title: plan.title, body: plan.body)
+            .show(
+              id: plan.id,
+              title: plan.title,
+              body: plan.body,
+              payload: request == null
+                  ? null
+                  : encodeNotificationPayload(
+                      kind: 'question',
+                      serverId: serverId,
+                      sessionId: request.agentId,
+                    ),
+            )
             .catchError((_) {}),
       );
     }
@@ -180,6 +196,11 @@ class BackgroundAlertNotifier extends Notifier<int> {
             id: 'done:$serverId|$sessionId'.hashCode,
             title: hasTitle ? '「$title」任务已完成' : '有一个任务已完成',
             body: '任务执行完毕，点击查看结果',
+            payload: encodeNotificationPayload(
+              kind: 'done',
+              serverId: serverId,
+              sessionId: sessionId,
+            ),
           )
           .catchError((_) {}),
     );

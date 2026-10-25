@@ -6,6 +6,7 @@ import '../features/notifications/background_alert_controller.dart';
 import '../features/servers/onboarding_page.dart';
 import '../features/servers/servers_providers.dart';
 import '../features/tasks/tasks_page.dart';
+import 'router.dart';
 import 'theme.dart';
 
 /// 根组件：未绑定服务端 → 引导页；已绑定 → 任务列表。
@@ -18,6 +19,7 @@ class DshApp extends StatelessWidget {
     return MaterialApp(
       title: '探索未至之境',
       debugShowCheckedModeBanner: false,
+      navigatorKey: dshNavigatorKey,
       theme: buildDshTheme(Brightness.light),
       darkTheme: buildDshTheme(Brightness.dark),
       themeMode: ThemeMode.system,

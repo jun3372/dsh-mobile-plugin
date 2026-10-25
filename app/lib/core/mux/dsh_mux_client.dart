@@ -146,6 +146,14 @@ class DshMuxClient {
       );
       _setState(MuxConnectionState.connected);
       for (final subscription in [..._subscriptions]) {
+        if (subscription.isDisposed) continue;
+        // 已结束/已失败的流不重开：重开会让服务端复活早已结束的等待
+        // （如 attachWait），并把事件派发给上层已关闭的 controller。
+        if (!subscription.autoReopen) continue;
+        if (subscription.phase == MuxSubscriptionPhase.ended ||
+            subscription.phase == MuxSubscriptionPhase.failed) {
+          continue;
+        }
         _sendOpen(subscription);
       }
     } catch (_) {

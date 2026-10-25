@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+/// 全局 navigator：供通知点击等无 context 场景做路由跳转。
+final GlobalKey<NavigatorState> dshNavigatorKey = GlobalKey<NavigatorState>();
+
 /// Navigator 1.0 路由辅助：平台自适应转场。
 Route<T> dshRoute<T>(Widget page) {
   return MaterialPageRoute<T>(builder: (_) => page);

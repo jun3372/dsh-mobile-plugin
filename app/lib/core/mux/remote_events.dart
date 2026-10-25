@@ -337,6 +337,16 @@ class RemoteEventsHub {
     );
     late final StreamController<Object?> controller;
     StreamSubscription<MuxStreamEvent>? events;
+
+    // 终态：关闭对外流、解除 mux 事件监听并 dispose 订阅（释放服务端 claim）。
+    // 不做终态清理的话，物理重连会把已 ended 的订阅强制重开，
+    // 之后的事件会派发给这里已关闭的 controller（StateError）。
+    void settle() {
+      if (!controller.isClosed) unawaited(controller.close());
+      unawaited(events?.cancel());
+      subscription.dispose();
+    }
+
     controller = StreamController<Object?>(
       onListen: () {
         events = subscription.events.listen((event) {
@@ -344,10 +354,10 @@ class RemoteEventsHub {
             case MuxStreamItem(:final value):
               controller.add(value);
             case MuxStreamEnded():
-              unawaited(controller.close());
+              settle();
             case MuxStreamFailure(:final error):
               controller.addError(StateError(error.message));
-              unawaited(controller.close());
+              settle();
             case MuxStreamOpened():
             case MuxStreamCarrierLost():
               break;

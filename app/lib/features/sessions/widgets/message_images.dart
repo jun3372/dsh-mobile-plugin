@@ -56,6 +56,10 @@ class _MessageImagesState extends ConsumerState<MessageImages> {
   final _loaded = <String, Uint8List>{};
   final _failed = <String>{};
 
+  /// inline 图解码缓存：流式期间本行每帧重建，base64 全量解码只做一次，
+  /// 并复用同一 Uint8List 实例让 Image.memory 命中图片缓存。
+  final _inlineCache = <String, Uint8List?>{};
+
   @override
   void didUpdateWidget(MessageImages oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -113,11 +117,18 @@ class _MessageImagesState extends ConsumerState<MessageImages> {
   Uint8List? _decodeInline(TranscriptImage image) {
     final data = image.inlineBase64;
     if (data == null) return null;
-    try {
-      return base64Decode(data);
-    } catch (_) {
-      return null;
+    if (_inlineCache.containsKey(image.attachmentId)) {
+      return _inlineCache[image.attachmentId];
     }
+    Uint8List? bytes;
+    try {
+      bytes = base64Decode(data);
+      _loaded[image.attachmentId] = bytes;
+    } catch (_) {
+      // 坏 base64：占位 null，避免每帧重复尝试。
+    }
+    _inlineCache[image.attachmentId] = bytes;
+    return bytes;
   }
 
   void _openViewer(TranscriptImage image) {

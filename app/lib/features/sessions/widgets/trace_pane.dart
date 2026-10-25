@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/theme.dart';
 import '../../../core/models/transcript_node.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/memo_row.dart';
 import '../session_providers.dart';
 
 /// 轨迹面板：由已加载的转写窗口派生的事件流（工具调用 / 轮次锚点 / 状态行）。
@@ -54,23 +55,45 @@ class _TracePaneState extends ConsumerState<TracePane>
       switch (node.kind) {
         case TranscriptKind.user:
           if (node.text.isNotEmpty) turn++;
-          rows.add(_TurnAnchor(turn: turn, text: node.text));
+          rows.add(
+            _TurnAnchor(
+              key: ValueKey('turn-${node.id}'),
+              turn: turn,
+              text: node.text,
+            ),
+          );
         case TranscriptKind.assistant:
           if (node.text.isNotEmpty) {
             rows.add(
-              _SummaryRow(
-                icon: Icons.smart_toy_outlined,
-                label: '回复',
-                text: node.text,
+              MemoTranscriptRow(
+                key: ValueKey('summary-${node.id}'),
+                node: node,
+                builder: (n) => _SummaryRow(
+                  icon: Icons.smart_toy_outlined,
+                  label: '回复',
+                  text: n.text,
+                ),
               ),
             );
           }
         case TranscriptKind.tool:
-          rows.add(_TraceToolRow(node: node));
+          rows.add(
+            MemoTranscriptRow(
+              key: ValueKey(node.id),
+              node: node,
+              builder: (n) => _TraceToolRow(node: n),
+            ),
+          );
         case TranscriptKind.error:
         case TranscriptKind.notice:
         case TranscriptKind.compaction:
-          rows.add(_StatusRow(node: node));
+          rows.add(
+            MemoTranscriptRow(
+              key: ValueKey(node.id),
+              node: node,
+              builder: (n) => _StatusRow(node: n),
+            ),
+          );
       }
     }
     rows.add(const SizedBox(height: 12));
@@ -133,7 +156,7 @@ class _TurnAnchor extends StatelessWidget {
   final int turn;
   final String text;
 
-  const _TurnAnchor({required this.turn, required this.text});
+  const _TurnAnchor({super.key, required this.turn, required this.text});
 
   @override
   Widget build(BuildContext context) {

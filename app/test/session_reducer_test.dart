@@ -221,6 +221,158 @@ void main() {
       expect(builder.nodes.map((node) => node.text), ['旧一', '新']);
       expect(builder.baseSeq, 3);
     });
+
+    test('单调 append（增量路径）与一次性 replace（全量）结果一致', () {
+      final events = [
+        _event('user/message', 1, {
+          'turn': 1,
+          'content': [
+            {'type': 'text', 'text': '问题'},
+          ],
+          'source': {'kind': 'user', 'rpcId': 'r1'},
+        }),
+        _event('tool/call', 2, {
+          'turn': 1,
+          'step': 0,
+          'callId': 'c1',
+          'name': 'bash',
+          'arguments': '{"command":"ls"}',
+        }),
+        _event('tool/result', 3, {
+          'turn': 1,
+          'step': 0,
+          'message': {
+            'toolCallId': 'c1',
+            'content': [
+              {'type': 'text', 'text': 'a.txt'},
+            ],
+          },
+        }),
+        _event('assistant/message', 4, {
+          'turn': 1,
+          'step': 0,
+          'message': {
+            'content': [
+              {'type': 'text', 'text': '答案'},
+            ],
+          },
+        }),
+        _event('turn/end', 5, {
+          'turn': 1,
+          'reason': {'kind': 'end_turn'},
+        }),
+      ];
+
+      final incremental = TranscriptBuilder();
+      for (final event in events) {
+        incremental.append(event);
+      }
+      final batched = TranscriptBuilder()..replace(events);
+
+      expect(incremental.nodes.length, batched.nodes.length);
+      String debug(TranscriptNode n) =>
+          '${n.id}|${n.kind}|${n.seq}|${n.timeMs}|${n.text}|${n.reasoning}|'
+          '${n.imageCount}|${n.toolName}|${n.toolCallId}|${n.toolArguments}|'
+          '${n.toolResult}|${n.toolFailed}|${n.toolFinished}|${n.live}';
+      for (var i = 0; i < batched.nodes.length; i++) {
+        expect(
+          debug(incremental.nodes[i]),
+          debug(batched.nodes[i]),
+          reason: '节点 $i 不一致',
+        );
+      }
+      expect(incremental.baseSeq, batched.baseSeq);
+      expect(incremental.seenRpcIds, batched.seenRpcIds);
+    });
+
+    test('增量路径下 tool/result 定点回填已存在的工具卡片', () {
+      final builder = TranscriptBuilder()
+        ..append(
+          _event('user/message', 1, {
+            'turn': 1,
+            'content': [
+              {'type': 'text', 'text': '跑一下'},
+            ],
+            'source': {'kind': 'user'},
+          }),
+        );
+      builder.append(
+        _event('tool/call', 2, {
+          'turn': 1,
+          'step': 0,
+          'callId': 'c1',
+          'name': 'bash',
+        }),
+      );
+      builder.append(
+        _event('tool/result', 3, {
+          'turn': 1,
+          'step': 0,
+          'message': {
+            'toolCallId': 'c1',
+            'content': <Object?>[],
+            'isError': true,
+          },
+          'error': {'name': 'ToolError', 'reason': '命令被拒绝'},
+        }),
+      );
+      expect(builder.nodes, hasLength(2));
+      expect(builder.nodes.last.toolResult, '命令被拒绝');
+      expect(builder.nodes.last.toolFailed, isTrue);
+      expect(builder.nodes.last.toolFinished, isTrue);
+    });
+
+    test('乱序 append 回退全量重建，结果仍按 seq 排序', () {
+      final builder = TranscriptBuilder()
+        ..append(
+          _event('user/message', 5, {
+            'turn': 1,
+            'content': [
+              {'type': 'text', 'text': '后到'},
+            ],
+            'source': {'kind': 'user'},
+          }),
+        );
+      builder.append(
+        _event('user/message', 3, {
+          'turn': 1,
+          'content': [
+            {'type': 'text', 'text': '先到'},
+          ],
+          'source': {'kind': 'user'},
+        }),
+      );
+      expect(builder.nodes.map((node) => node.text), ['先到', '后到']);
+      expect(builder.baseSeq, 3);
+    });
+
+    test('增量路径下压缩摘要先于 replace 检查点到达也生效', () {
+      final builder = TranscriptBuilder()
+        ..append(
+          _event('compaction/summary', 1, {
+            'compactionId': 'c1',
+            'summary': [
+              {'type': 'text', 'text': '前文摘要'},
+            ],
+          }),
+        );
+      builder.append(
+        _event('user/message', 2, {
+          'turn': 2,
+          'content': [
+            {'type': 'text', 'text': '压缩后的检查点'},
+          ],
+          'source': {
+            'kind': 'plugin',
+            'plugin': 'compact',
+            'compactionId': 'c1',
+          },
+        }, surfaceOp: 'replace'),
+      );
+      expect(builder.nodes, hasLength(1));
+      expect(builder.nodes.single.kind, TranscriptKind.compaction);
+      expect(builder.nodes.single.text, '前文摘要');
+    });
   });
 
   group('AssistantStreamFolder', () {

@@ -1,6 +1,6 @@
 {
   "name": "dsh-mobile-plugin",
-  "version": "0.1.0-dev.26",
+  "version": "1.0.0",
   "private": true,
   "description": "DSH Mobile 手机连接插件：局域网、Cloudflare 与 frpc 隧道、扫码配对、开机自动恢复",
   "type": "module",

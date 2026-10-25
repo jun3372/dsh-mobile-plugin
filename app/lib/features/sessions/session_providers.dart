@@ -170,7 +170,8 @@ class SessionNotifier extends AsyncNotifier<SessionViewState> {
   MuxHub? _hub;
   DshApi? _api;
 
-  final Completer<void> _ready = Completer<void>();
+  /// 每次 build 重建（Riverpod 复用同一 Notifier 实例，invalidate 后再次进入 build）。
+  Completer<void> _ready = Completer<void>();
   final Set<String> _answeredQuestionKeys = {};
   List<ApprovalRequest> _approvals = const [];
   List<RemoteQuestionRequest> _waterfallQuestions = const [];
@@ -195,6 +196,18 @@ class SessionNotifier extends AsyncNotifier<SessionViewState> {
 
   @override
   Future<SessionViewState> build() async {
+    // Riverpod 重建时复用同一 Notifier 实例：上一轮 build 的 onDispose 已执行，
+    // 但实例字段仍残留 `_disposed=true` 与已 complete 的 `_ready`，不复位会导致
+    // invalidate（如「重试」）后流式帧与发布被永久丢弃。
+    _disposed = false;
+    _built = false;
+    _ready = Completer<void>();
+    _answeredQuestionKeys.clear();
+    _approvals = const [];
+    _waterfallQuestions = const [];
+    _connection = MuxConnectionState.idle;
+    _runtimeError = null;
+    _loadingOlder = false;
     ref.onDispose(_dispose);
     final hub = ref.watch(muxHubProvider);
     final api = ref.watch(dshApiProvider);

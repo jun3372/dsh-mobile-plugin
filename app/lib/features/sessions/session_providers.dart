@@ -392,7 +392,12 @@ class SessionNotifier extends AsyncNotifier<SessionViewState> {
           _schedulePublish();
         },
         onDone: () {
-          _waitSubs.remove(key);
+          _waitSubs.remove(key)?.cancel();
+          _waitTickers.remove(key)?.cancel();
+        },
+        onError: (Object _) {
+          // attachWait 流失败（如服务端报错）视同结束，交由 pending 重放恢复。
+          _waitSubs.remove(key)?.cancel();
           _waitTickers.remove(key)?.cancel();
         },
       );

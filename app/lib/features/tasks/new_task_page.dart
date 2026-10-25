@@ -317,8 +317,18 @@ class _NewTaskPageState extends ConsumerState<NewTaskPage> {
       await _applyMode(api, existing);
       return existing;
     }
-    final cwd = _effectiveWorkspace(ref.read(workspacesProvider));
-    final sessionId = await api.createSession(cwd: cwd);
+    final rows = ref.read(workspacesProvider);
+    final cwd = _effectiveWorkspace(rows);
+    // 宿主只在带 workspaceId 建会话时把会话挂进工作区；仅传 cwd 的会话
+    // 会一直停留在「未分组」，所以优先按选中行的 workspaceId 创建。
+    final workspaceId = rows
+        .where((row) => row.path == cwd)
+        .map((row) => row.workspaceId)
+        .firstOrNull;
+    final sessionId = await api.createSession(
+      workspaceId: workspaceId,
+      cwd: workspaceId == null ? cwd : null,
+    );
     _createdSessionId = sessionId;
     // preset 先落：切换会重挂 Agent 插件，权限/计划命令依赖新组装。
     await _applyMode(api, sessionId);

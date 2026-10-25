@@ -712,6 +712,17 @@ void main() {
       expect(((body['payload'] as Map)['args'] as Map)['request'], {
         'cwd': '/root/weaver',
       });
+
+      // 指定工作区时必须带 workspaceId，宿主据此把会话挂进该工作区。
+      expect(await api.createSession(workspaceId: 'w-1'), 's-new');
+      body = jsonDecode(captured.last.body) as Map<String, dynamic>;
+      expect(((body['payload'] as Map)['args'] as Map)['request'], {
+        'workspaceId': 'w-1',
+      });
+      await expectLater(
+        api.createSession(workspaceId: 'w-1', cwd: '/root/weaver'),
+        throwsArgumentError,
+      );
     });
 
     test('prompt 可携带图片 base64 项', () async {

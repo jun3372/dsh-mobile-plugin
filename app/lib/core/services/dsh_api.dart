@@ -162,12 +162,21 @@ class DshApi {
     );
   }
 
-  /// 新建会话（宿主会复用可复用的空白会话）；[cwd] 指定工作区目录。
-  Future<String> createSession({String? cwd}) async {
+  /// 新建会话（宿主会复用可复用的空白会话）。
+  ///
+  /// [workspaceId] 与 [cwd] 二选一：宿主按 workspaceId 建会话时会同时把
+  /// 会话挂到该工作区名下；只传 cwd 的会话不会进入工作区（DSH 显示为未分组）。
+  Future<String> createSession({String? workspaceId, String? cwd}) async {
+    if (workspaceId != null && cwd != null) {
+      throw ArgumentError('createSession 只能指定 workspaceId 或 cwd');
+    }
     final value = await _client.rpc(
       'session/create',
       args: {
-        'request': {if (cwd != null && cwd.isNotEmpty) 'cwd': cwd},
+        'request': {
+          'workspaceId': ?workspaceId,
+          if (cwd != null && cwd.isNotEmpty) 'cwd': cwd,
+        },
       },
     );
     final sessionId = _field(value, 'sessionId');

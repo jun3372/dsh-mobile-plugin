@@ -101,10 +101,14 @@ GitHub Actions 工作流 [`.github/workflows/build.yml`](.github/workflows/build
 | Job | Runner | 产物 | 触发 |
 | --- | --- | --- | --- |
 | `plugin` | ubuntu | `dsh-mobile-plugin-*.tgz` | PR / push / tag |
-| `android` | ubuntu（官方 Flutter 3.41.9） | `DSH-Mobile-*-android.apk` | PR / push / tag |
-| `ios` | macos（官方 Flutter 3.41.9） | `DSH-Mobile-*-ios-unsigned.ipa` | PR / push / tag |
+| `android` | ubuntu（flutter-ohos 3.41.9+ohos-1.0.2） | `DSH-Mobile-*-android.apk` | PR / push / tag |
+| `ios` | macos（flutter-ohos 3.41.9+ohos-1.0.2） | `DSH-Mobile-*-ios-unsigned.ipa` | PR / push / tag |
 | `harmonyos` | ubuntu（flutter-ohos 3.41.9+ohos-1.0.2 + DevEco CLI 26.0.0.821） | `DSH-Mobile-*-harmonyos-*.hap` | PR / push / tag |
 | `release` | ubuntu | 汇总上述产物发布 GitHub Release | 仅 `v*` tag |
+
+三端 App 统一使用 [CPF-Flutter 的 flutter-ohos SDK](https://atomgit.com/CPF-Flutter/flutter_flutter)（复合动作
+[`.github/actions/setup-flutter-ohos`](.github/actions/setup-flutter-ohos/action.yml)）：`mobile_scanner`、
+`flutter_local_notifications` 的鸿蒙移植版在 Dart 层引用 `TargetPlatform.ohos`，官方 Flutter 无法编译。
 
 **HarmonyOS 可选签名 Secrets**（全部配置后 CI 直接产出已签名 HAP）：
 

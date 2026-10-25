@@ -13,7 +13,6 @@ concurrency:
 
 env:
   APP_VERSION: '1.0.0'
-  FLUTTER_VERSION: '3.41.9'
   FLUTTER_OHOS_VERSION: '3.41.9+ohos-1.0.2'
   OHOS_CLI_VERSION: '26.0.0.821'
 
@@ -51,14 +50,14 @@ jobs:
           echo "$(dirname "$SM")" >> "$GITHUB_PATH"
           yes | "$SM" --licenses >/dev/null || true
           "$SM" --install "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
-      - uses: subosito/flutter-action@v2
+      - uses: ./.github/actions/setup-flutter-ohos
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
+          version: ${{ env.FLUTTER_OHOS_VERSION }}
+          platform: android
       - name: Build APK
         working-directory: app
         run: |
+          flutter precache --android
           flutter pub get
           flutter build apk --release \
             --build-name "${{ env.APP_VERSION }}" --build-number "${{ github.run_number }}"
@@ -78,17 +77,17 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: ./.github/actions/setup-flutter-ohos
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
+          version: ${{ env.FLUTTER_OHOS_VERSION }}
+          platform: ios
       - name: Build iOS (no codesign)
         working-directory: app
         run: |
-          flutter doctor -v
+          flutter precache --ios
           flutter pub get
-          flutter build ios --release --no-codesign --no-tree-shake-icons -v \
+          # 关闭图标裁剪：fork 的 font-subset 产物链路未在 CI 验证，先保证构建稳定
+          flutter build ios --release --no-codesign --no-tree-shake-icons \
             --build-name "${{ env.APP_VERSION }}" --build-number "${{ github.run_number }}"
       - name: Dump Xcode errors
         if: failure()
@@ -133,29 +132,13 @@ jobs:
         with:
           version: ${{ env.OHOS_CLI_VERSION }}
           cache: true
-      - name: Install flutter-ohos SDK
-        run: |
-          git clone --depth 1 --branch "$FLUTTER_OHOS_VERSION" \
-            https://atomgit.com/CPF-Flutter/flutter_flutter.git "$HOME/flutter-ohos"
-          echo "$HOME/flutter-ohos/bin" >> "$GITHUB_PATH"
-          echo "FLUTTER_STORAGE_BASE_URL=https://flutter-ohos.obs.cn-south-1.myhuaweicloud.com" >> "$GITHUB_ENV"
-      - name: Patch flutter_cache (Huawei mirror lacks upstream engine artifacts)
-        run: |
-          F="$HOME/flutter-ohos/packages/flutter_tools/lib/src/flutter_cache.dart"
-          sed -i 's|^    registerArtifact(FlutterEngineStamp(this, logger));|    // registerArtifact(FlutterEngineStamp(this, logger));|' "$F"
-          sed -i '/for (final String artifactName in IosUsbArtifacts.artifactNames) {/,/registerArtifact(FontSubsetArtifacts(this, platform: platform));/s|^|// |' "$F"
-          sed -i "s|const <String>\['sky_engine', 'flutter_gpu'\]|const <String>['sky_engine']|" "$F"
-          grep -c "// registerArtifact(FlutterEngineStamp" "$F"
-      - name: Cache flutter-ohos artifacts
-        uses: actions/cache@v4
+      - uses: ./.github/actions/setup-flutter-ohos
         with:
-          path: ~/flutter-ohos/bin/cache
-          key: flutter-ohos-${{ env.FLUTTER_OHOS_VERSION }}-${{ runner.os }}
-      - name: Configure Flutter
+          version: ${{ env.FLUTTER_OHOS_VERSION }}
+          platform: ohos
+      - name: Configure HarmonyOS SDK
         run: |
-          flutter config --no-analytics
           flutter config --ohos-sdk "$HOS_SDK_HOME"
-          flutter --version
           flutter precache --ohos
       - name: Build HAP (unsigned)
         working-directory: app

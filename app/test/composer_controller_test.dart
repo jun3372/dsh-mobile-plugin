@@ -6,12 +6,12 @@ import 'package:dsh_mobile/core/errors.dart';
 import 'package:dsh_mobile/core/models/composer_models.dart';
 import 'package:dsh_mobile/core/services/api_client.dart';
 import 'package:dsh_mobile/core/services/dsh_api.dart';
-import 'package:dsh_mobile/features/sessions/composer/attachment_store.dart';
-import 'package:dsh_mobile/features/sessions/composer/composer_controller.dart';
-import 'package:dsh_mobile/features/sessions/composer/composer_document.dart';
-import 'package:dsh_mobile/features/sessions/composer/composer_draft_store.dart';
-import 'package:dsh_mobile/features/sessions/composer/trigger_menu_controller.dart';
-import 'package:dsh_mobile/features/sessions/composer/trigger_sources.dart';
+import 'package:dsh_mobile/widgets/composer/attachment_store.dart';
+import 'package:dsh_mobile/widgets/composer/composer_controller.dart';
+import 'package:dsh_mobile/widgets/composer/composer_document.dart';
+import 'package:dsh_mobile/widgets/composer/composer_draft_store.dart';
+import 'package:dsh_mobile/widgets/composer/trigger_menu_controller.dart';
+import 'package:dsh_mobile/widgets/composer/trigger_sources.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -157,11 +157,10 @@ void main() {
   });
 
   group('占位文案', () {
-    test('就绪态带工作区名，且不再出现「按住说话」', () {
+    test('就绪态使用统一默认文案', () {
       final h = _Harness();
-      expect(h.controller.placeholderState, ComposerPlaceholderState.workspace);
-      expect(h.controller.placeholderText, contains('demo'));
-      expect(h.controller.placeholderText, isNot(contains('说话')));
+      expect(h.controller.placeholderState, ComposerPlaceholderState.ready);
+      expect(h.controller.placeholderText, '发消息或创建任务, / 调用指令, @ 文件或对话');
     });
 
     test('无工作区时回落到通用文案', () {

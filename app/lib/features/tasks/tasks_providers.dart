@@ -80,7 +80,7 @@ class TasksNotifier extends AsyncNotifier<List<SessionSummary>> {
     _api = api;
     _hub = hub;
     if (api == null) return const [];
-    final sessions = await api.listSessions();
+    final sessions = withoutSubagentSessions(await api.listSessions());
     if (hub == null) return sessions;
     _bind(hub);
     return _merge(sessions, hub);
@@ -157,7 +157,7 @@ class TasksNotifier extends AsyncNotifier<List<SessionSummary>> {
     if (api == null) return;
     _reloading = true;
     try {
-      final sessions = await api.listSessions();
+      final sessions = withoutSubagentSessions(await api.listSessions());
       if (_disposed) return;
       state = AsyncData(hub == null ? sessions : _merge(sessions, hub));
     } on AppException {
@@ -414,6 +414,15 @@ class PinnedIdsNotifier extends Notifier<Set<String>> {
 }
 
 /// 列表视图过滤排序（纯函数，可单测）：归档过滤 + 置顶优先。
+/// 会话列表与搜索共用的可见集合：子任务（subagent）会话归属父会话，
+/// 不在首页、归档、搜索里单独展示。
+List<SessionSummary> withoutSubagentSessions(List<SessionSummary> sessions) {
+  return [
+    for (final session in sessions)
+      if (!session.isSubagent) session,
+  ];
+}
+
 List<SessionSummary> visibleSessions(
   List<SessionSummary> sessions, {
   required Set<String> archivedIds,

@@ -30,22 +30,26 @@ class PairingController extends Notifier<PairingState> {
 
   void reset() => state = const PairingState();
 
-  /// 解析并绑定；返回是否成功。状态变化通过 [pairingControllerProvider] 观察。
-  Future<bool> bind(String raw, {String? manualPassword}) async {
+  /// 解析并绑定；返回是否成功。状态变化通过 [pairingControllerProvider] 观察，
+  /// 同时可用 [onStage] 在弹窗等局部 UI 内实时展示阶段，避免额外订阅。
+  Future<bool> bind(
+    String raw, {
+    String? manualPassword,
+    void Function(PairingState state)? onStage,
+  }) async {
+    void emit(PairingState next) {
+      state = next;
+      onStage?.call(next);
+    }
+
     final PairingPayload payload;
     try {
       payload = parsePairingPayload(raw);
     } on PairingException catch (e) {
-      state = PairingState(
-        status: PairingStatus.failed,
-        message: e.userMessage,
-      );
+      emit(PairingState(status: PairingStatus.failed, message: e.userMessage));
       return false;
     }
-    state = PairingState(
-      status: PairingStatus.checking,
-      origin: payload.origin,
-    );
+    emit(PairingState(status: PairingStatus.checking, origin: payload.origin));
     final client = ApiClient(
       origin: payload.origin,
       password: manualPassword ?? payload.token,
@@ -53,15 +57,16 @@ class PairingController extends Notifier<PairingState> {
     try {
       final info = await client.fetchInfo();
       if (!info.isDshMobile || info.instanceId.isEmpty) {
-        state = const PairingState(
-          status: PairingStatus.failed,
-          message: '目标不是 DSH Mobile 网关',
+        emit(
+          const PairingState(
+            status: PairingStatus.failed,
+            message: '目标不是 DSH Mobile 网关',
+          ),
         );
         return false;
       }
-      state = PairingState(
-        status: PairingStatus.loggingIn,
-        origin: payload.origin,
+      emit(
+        PairingState(status: PairingStatus.loggingIn, origin: payload.origin),
       );
       await client.login();
       final now = DateTime.now();
@@ -94,23 +99,24 @@ class PairingController extends Notifier<PairingState> {
               lastUsedAt: now,
             ),
           );
-      state = PairingState(
-        status: PairingStatus.success,
-        origin: payload.origin,
-      );
+      emit(PairingState(status: PairingStatus.success, origin: payload.origin));
       return true;
     } on AuthException catch (e) {
-      state = PairingState(
-        status: PairingStatus.failed,
-        message: e.userMessage,
-        origin: payload.origin,
+      emit(
+        PairingState(
+          status: PairingStatus.failed,
+          message: e.userMessage,
+          origin: payload.origin,
+        ),
       );
       return false;
     } on AppException catch (e) {
-      state = PairingState(
-        status: PairingStatus.failed,
-        message: e.userMessage,
-        origin: payload.origin,
+      emit(
+        PairingState(
+          status: PairingStatus.failed,
+          message: e.userMessage,
+          origin: payload.origin,
+        ),
       );
       return false;
     } finally {

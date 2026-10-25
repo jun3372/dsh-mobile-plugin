@@ -25,6 +25,20 @@ void main() {
   final now = DateTime.now();
   final yesterday = now.subtract(const Duration(days: 1));
 
+  test('子任务（subagent）会话不进首页列表', () {
+    final visible = withoutSubagentSessions([
+      session(id: 'parent', title: '绘画'),
+      SessionSummary(
+        sessionId: 'child',
+        title: '子任务',
+        origin: 'subagent',
+        cwd: '/root/weaver',
+      ),
+      session(id: 'forked', title: '派生会话'),
+    ]);
+    expect(visible.map((s) => s.sessionId), ['parent', 'forked']);
+  });
+
   test('按工作区分组', () {
     final groups = groupTasks([
       session(id: 'a', cwd: '/root/weaver', title: 'A'),

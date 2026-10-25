@@ -7,6 +7,7 @@ import '../../core/errors.dart';
 import '../../core/models/dsh_session.dart';
 import '../../core/mux/workspace_hub.dart';
 import '../../widgets/common.dart';
+import '../../widgets/dsh_logo.dart';
 import '../servers/servers_page.dart';
 import '../servers/servers_providers.dart';
 import '../sessions/session_page.dart';
@@ -59,27 +60,14 @@ class _TasksPageState extends ConsumerState<TasksPage> {
   }
 
   Widget _buildHeader(String serverName, AsyncValue<bool> connection) {
-    final p = context.dsh;
     return Padding(
       padding: DshHeaderMetrics.padding,
       child: Row(
         children: [
-          Container(
+          // 与新建会话页头部一致：SVG 鲸鱼标志，随深浅色主题自动换色。
+          const DshLogo(
             width: DshHeaderMetrics.logo,
             height: DshHeaderMetrics.logo,
-            decoration: BoxDecoration(
-              color: p.foreground,
-              borderRadius: BorderRadius.circular(DshRadius.thumb),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              'D',
-              style: TextStyle(
-                color: p.onForeground,
-                fontSize: DshHeaderMetrics.logoFontSize,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
           ),
           const SizedBox(width: DshSpace.x2),
           Expanded(
@@ -113,6 +101,8 @@ class _TasksPageState extends ConsumerState<TasksPage> {
           Builder(
             builder: (buttonContext) => CircleButton(
               icon: Icons.more_horiz,
+              iconSize: DshIcon.header,
+              size: DshHeaderMetrics.button,
               tooltip: '更多',
               onTap: () => _showMoreMenu(buttonContext),
             ),

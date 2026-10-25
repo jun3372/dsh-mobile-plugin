@@ -15,8 +15,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
-import '../../../../core/models/dsh_models.dart';
-import '../../../../core/services/dsh_api.dart';
+import '../../core/models/dsh_models.dart';
+import '../../core/services/dsh_api.dart';
 
 /// 文件上传状态（图片没有该状态，发送时才编码）。
 enum DraftUploadState { uploading, ready, failed }
@@ -73,7 +73,10 @@ class AttachmentRejection {
 
 class AttachmentStore extends ChangeNotifier {
   final DshApi api;
-  final String sessionId;
+
+  /// 会话 id；新建会话页在会话创建前为 null，文件上传排队等待
+  /// [attachSession] 后再开泵。
+  String? _sessionId;
 
   /// 与 Web 的 `maxConcurrentFileUploads` 默认值一致。
   static const maxConcurrentUploads = 2;
@@ -86,9 +89,20 @@ class AttachmentStore extends ChangeNotifier {
 
   AttachmentStore({
     required this.api,
-    required this.sessionId,
+    String? sessionId,
     this.limits = const ImageLimits(),
-  });
+  }) : _sessionId = sessionId;
+
+  String? get sessionId => _sessionId;
+
+  bool get hasSession => _sessionId != null;
+
+  /// 建会话后补挂 id（新建会话页：附件先选、会话后建），并开泵积压上传。
+  void attachSession(String id) {
+    if (_sessionId == id) return;
+    _sessionId = id;
+    _pumpUploads();
+  }
 
   List<DraftAttachment> get items => List.unmodifiable(_items);
 
@@ -108,7 +122,11 @@ class AttachmentStore extends ChangeNotifier {
   /// 发送前的阻断原因；null 表示可以发送。
   String? get sendBlocker {
     if (failed.isNotEmpty) return '有文件上传失败，请重试或移除';
-    if (hasUploading) return '文件还在上传，请等待上传完成后发送';
+    if (_items.any((item) => !item.isImage && item.receiptId == null)) {
+      // 会话尚未创建（新建会话页）：文件在等会话，而不是等上传。
+      if (!hasSession) return '正在创建会话，请稍候…';
+      return '文件还在上传，请等待上传完成后发送';
+    }
     return null;
   }
 
@@ -221,15 +239,17 @@ class AttachmentStore extends ChangeNotifier {
   }
 
   void _pumpUploads() {
+    if (!hasSession) return;
+    final id = _sessionId!;
     while (_runningUploads < maxConcurrentUploads &&
         _pendingUploads.isNotEmpty) {
       final item = _pendingUploads.removeAt(0);
       _runningUploads++;
-      unawaited(_upload(item));
+      unawaited(_upload(item, id));
     }
   }
 
-  Future<void> _upload(DraftAttachment item) async {
+  Future<void> _upload(DraftAttachment item, String sessionId) async {
     item.uploadState = DraftUploadState.uploading;
     item.progress = 0;
     item.error = null;

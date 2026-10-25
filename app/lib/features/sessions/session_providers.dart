@@ -147,6 +147,7 @@ class SessionViewState {
       connection: connection,
       connectionError: connectionError,
       cursor: cursor,
+      turns: turns,
       questionRemainingMs: questionRemainingMs,
     );
   }

@@ -7,7 +7,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../app/theme.dart';
 import '../../widgets/common.dart';
-import 'pairing_controller.dart';
+import 'widgets/pairing_progress_dialog.dart';
 
 /// 扫码绑定页：mobile_scanner 取流 + 手动输入降级表单。
 /// （ohos 平台实现由 dependency_overrides 指向 CPF-Flutter 移植提供。）
@@ -22,6 +22,10 @@ class _ScanPageState extends ConsumerState<ScanPage> {
   final _controller = MobileScannerController();
   bool _handling = false;
 
+  /// 刚处理过的码值与时间：取消/失败后同一二维码仍在镜头里时避免立刻重试。
+  String? _lastRaw;
+  DateTime? _lastDetectedAt;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -30,11 +34,6 @@ class _ScanPageState extends ConsumerState<ScanPage> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(pairingControllerProvider, (previous, next) {
-      if (next.status == PairingStatus.success) {
-        if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
-      }
-    });
     return Scaffold(
       // 相机页恒黑白字，不随主题（SPEC §1.2）。
       backgroundColor: Colors.black,
@@ -84,66 +83,23 @@ class _ScanPageState extends ConsumerState<ScanPage> {
               ],
             ),
           ),
-          _buildStatusBanner(),
         ],
       ),
     );
   }
 
-  Widget _buildStatusBanner() {
-    final state = ref.watch(pairingControllerProvider);
-    if (state.status == PairingStatus.idle ||
-        state.status == PairingStatus.success) {
-      return const SizedBox.shrink();
+  /// 启动绑定并统一用居中进度弹窗展示全过程；成功回首页，失败留在本页重扫。
+  Future<void> _startBind(String raw) async {
+    if (_handling) return;
+    setState(() => _handling = true);
+    unawaited(HapticFeedback.mediumImpact());
+    final ok = await PairingProgressDialog.show(context, raw);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } else {
+      setState(() => _handling = false);
     }
-    final text = switch (state.status) {
-      PairingStatus.checking => '正在连接服务端…',
-      PairingStatus.loggingIn => '已连接，正在验证访问密码…',
-      PairingStatus.failed => state.message,
-      _ => '',
-    };
-    return Positioned(
-      left: 24,
-      right: 24,
-      bottom: 24,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: state.status == PairingStatus.failed
-              ? context.dsh.dangerRed.withValues(alpha: 0.92)
-              : Colors.black.withValues(alpha: 0.75),
-          borderRadius: BorderRadius.circular(DshRadius.codeBlock),
-        ),
-        child: Row(
-          children: [
-            if (state.status != PairingStatus.failed)
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              ),
-            if (state.status != PairingStatus.failed) const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                text,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.close, size: 18, color: Colors.white),
-              onPressed: () {
-                // 中途取消配对：恢复扫码，允许重新识别或改用手动输入。
-                setState(() => _handling = false);
-                ref.read(pairingControllerProvider.notifier).reset();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Future<void> _onDetect(BarcodeCapture capture) async {
@@ -151,14 +107,16 @@ class _ScanPageState extends ConsumerState<ScanPage> {
     for (final barcode in capture.barcodes) {
       final raw = barcode.rawValue;
       if (raw == null || raw.isEmpty) continue;
-      _handling = true;
-      // 识别成功：触觉 + 提示，随后进入连接流程。
-      unawaited(HapticFeedback.mediumImpact());
-      if (mounted) {
-        ScaffoldMessenger.of(context).clearSnackBars();
-        showDshSnack(context, '二维码识别成功，正在连接服务端…');
+      final now = DateTime.now();
+      final lastAt = _lastDetectedAt;
+      if (raw == _lastRaw &&
+          lastAt != null &&
+          now.difference(lastAt) < const Duration(seconds: 3)) {
+        continue;
       }
-      await ref.read(pairingControllerProvider.notifier).bind(raw);
+      _lastRaw = raw;
+      _lastDetectedAt = now;
+      await _startBind(raw);
       return;
     }
   }
@@ -172,8 +130,8 @@ class _ScanPageState extends ConsumerState<ScanPage> {
       useSafeArea: true,
       builder: (sheetContext) => _ManualInputSheet(
         onSubmit: (raw) {
-          _handling = true;
-          ref.read(pairingControllerProvider.notifier).bind(raw);
+          // 表单先关闭，再弹居中进度；结果统一由弹窗处理。
+          unawaited(_startBind(raw));
         },
       ),
     );

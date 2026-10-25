@@ -52,6 +52,8 @@ dependencies:
   flutter_markdown_plus: ^1.0.12
   # OpenHarmony 平台的 shared_preferences 实现；缺失会导致鸿蒙真机启动白屏。
   shared_preferences_ohos: ^2.2.0
+  # 纯 Dart SVG 渲染（vector_graphics），无平台插件，鸿蒙可直接复用。
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:
@@ -77,6 +79,8 @@ flutter:
 
   assets:
     - assets/icon/logo.png
+    # 单色鲸鱼标志：由 DshLogo 按主题着色，深浅色模式分别显示黑/白。
+    - assets/icon/logo_mono.svg
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

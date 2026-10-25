@@ -224,6 +224,9 @@ abstract final class DshIcon {
   static const tool = 18.0;
   static const action = 20.0;
   static const nav = 22.0;
+
+  /// 标题栏左右两侧操作图标（返回、更多、刷新等）。
+  static const header = 18.0;
 }
 
 /// 触控目标下限（SPEC §3：44×44；视觉尺寸可小于触控区，用 padding 扩 hit area）。
@@ -244,11 +247,14 @@ abstract final class DshHeaderMetrics {
   /// 首页 Logo 方块边长。
   static const double logo = 28.0;
 
-  /// Logo「D」字符字号。
-  static const double logoFontSize = 14.0;
+  /// 标题栏圆形按钮直径（背景圈与触控区同步收缩，图标用 [DshIcon.header]）。
+  static const double button = 36.0;
 
   /// displaySmall 页面大标题的局部覆写值（全局字阶仍为 24）。
-  static const double title = 20.0;
+  static const double title = 18.0;
+
+  /// 内页标题栏（会话详情、工作区文件、AppBar 页面）字号。
+  static const double barTitle = 16.0;
 
   /// 标题右侧下拉箭头。
   static const double dropdownIcon = 20.0;
@@ -262,8 +268,8 @@ abstract final class DshButton {
   /// composer 底行小工具钮。
   static const tool = 28.0;
 
-  /// 新建任务 FAB。
-  static const fab = 64.0;
+  /// 新建任务 FAB（收缩到 48 仍满足 44 触控下限，图标保持 22）。
+  static const fab = 48.0;
   static const fabIcon = 22.0;
 }
 
@@ -393,8 +399,12 @@ ThemeData buildDshTheme(Brightness brightness) {
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: false,
-      titleTextStyle: text.titleLarge?.copyWith(fontSize: 18),
-      iconTheme: IconThemeData(color: p.foreground, size: DshIcon.nav),
+      titleTextStyle: text.titleLarge?.copyWith(
+        fontSize: DshHeaderMetrics.barTitle,
+      ),
+      iconTheme: IconThemeData(color: p.foreground, size: DshIcon.header),
+      // 返回箭头与自定义头部按钮一致收紧：默认 56 留白过宽。
+      leadingWidth: 48,
       systemOverlayStyle: _overlayStyle(p, isDark),
     ),
     filledButtonTheme: FilledButtonThemeData(

@@ -40,10 +40,12 @@ class SessionHeader extends StatelessWidget {
         children: [
           CircleButton(
             icon: Icons.arrow_back_ios_new_rounded,
+            iconSize: DshIcon.header,
+            size: DshHeaderMetrics.button,
             tooltip: '返回',
             onTap: onBack,
           ),
-          const SizedBox(width: DshSpace.x4),
+          const SizedBox(width: DshSpace.x1),
           Expanded(
             child: Material(
               type: MaterialType.transparency,
@@ -64,7 +66,9 @@ class SessionHeader extends StatelessWidget {
                         title ?? '新任务',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: context.dshText.titleLarge,
+                        style: context.dshText.titleLarge?.copyWith(
+                          fontSize: DshHeaderMetrics.barTitle,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Row(
@@ -92,7 +96,7 @@ class SessionHeader extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: DshSpace.x2),
+          const SizedBox(width: DshSpace.x1),
           _HeaderActionsPill(onFolder: onFolder, onMore: onMore),
         ],
       ),
@@ -170,10 +174,10 @@ class _PillIconButton extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: SizedBox(
-          width: DshTouch.minTarget,
-          height: DshTouch.minTarget,
+          width: DshHeaderMetrics.button,
+          height: DshHeaderMetrics.button,
           child: Center(
-            child: Icon(icon, size: DshIcon.action, color: p.foreground),
+            child: Icon(icon, size: DshIcon.header, color: p.foreground),
           ),
         ),
       ),

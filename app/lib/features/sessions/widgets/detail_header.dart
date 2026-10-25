@@ -31,6 +31,8 @@ class DetailHeader extends StatelessWidget {
         children: [
           CircleButton(
             icon: Icons.arrow_back_ios_new_rounded,
+            iconSize: DshIcon.header,
+            size: DshHeaderMetrics.button,
             tooltip: '返回',
             onTap: onBack,
           ),
@@ -44,7 +46,9 @@ class DetailHeader extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: context.dshText.titleLarge,
+                  style: context.dshText.titleLarge?.copyWith(
+                    fontSize: DshHeaderMetrics.barTitle,
+                  ),
                 ),
                 if (subtitle != null) ...[
                   const SizedBox(height: 2),

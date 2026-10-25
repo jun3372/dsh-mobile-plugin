@@ -6,7 +6,7 @@ library;
 
 import 'package:flutter/material.dart';
 
-import '../../../app/theme.dart';
+import '../../app/theme.dart';
 import 'trigger_menu_controller.dart';
 import 'trigger_sources.dart';
 

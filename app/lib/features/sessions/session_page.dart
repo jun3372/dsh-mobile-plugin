@@ -16,12 +16,12 @@ import '../../widgets/common.dart';
 import '../../widgets/model_picker_sheet.dart';
 import '../servers/servers_providers.dart';
 import '../tasks/tasks_providers.dart';
-import 'composer/attachment_sources.dart';
-import 'composer/attachment_store.dart';
-import 'composer/composer_bar.dart';
-import 'composer/composer_controller.dart';
-import 'composer/composer_draft_store.dart';
-import 'composer/trigger_sources.dart';
+import '../../widgets/composer/attachment_sources.dart';
+import '../../widgets/composer/attachment_store.dart';
+import '../../widgets/composer/composer_bar.dart';
+import '../../widgets/composer/composer_controller.dart';
+import '../../widgets/composer/composer_draft_store.dart';
+import '../../widgets/composer/trigger_sources.dart';
 import 'session_providers.dart';
 import 'widgets/approval_card.dart';
 import 'widgets/chat_pane.dart';
@@ -120,7 +120,7 @@ class _SessionPageState extends ConsumerState<SessionPage> {
               ),
               // 键盘弹起时隐藏底部状态栏：输入态不需要「轮数·工具·tokens」，
               // 且省出的高度吸收 composer + 键盘对 Column 的溢出（此前溢出 16px）。
-              if (view != null && !keyboardOpen) SessionStatusBar(view: view),
+              if (view != null && keyboardOpen) SessionStatusBar(view: view),
               _buildInputArea(view),
             ],
           ),
@@ -369,7 +369,15 @@ class _SessionPageState extends ConsumerState<SessionPage> {
           else if (view != null && composer != null)
             ComposerBar(
               controller: composer,
-              view: view,
+              view: ComposerViewData(
+                imageLimits: view.imageLimits,
+                ready: view.hasSnapshot && !view.waitingSnapshot,
+                running: view.running,
+                offline: view.isOffline,
+                planActive: view.plan?.active ?? false,
+                cwd: view.cwd,
+                selectedModel: view.selectedModel,
+              ),
               sources: _sources,
               actions: _composerActions(),
               onError: _showError,

@@ -1,22 +1,21 @@
-/// 会话页输入条：顶行选择器 + 附件栏 + 输入行 + 底部工具行。
+/// 会话页输入条：附件栏 + 输入行 + 底部工具行。
 ///
-/// 布局对齐 Qoder 桌面端 composer：卡片上方一行「工作区 / 会话模式」选择器；
-/// 卡片内输入内容上方独立一行显示计划 chip 与附件卡片；输入框独占一行；
-/// 底行左侧为「+」圆钮（指令与附件统一入口）与盾牌权限钮，右侧为模型选择
-/// 与 34px 停止/发送圆钮。
-/// - 会话模式在「标准模式 / 计划模式」间切换，计划模式经 /plan 落笔生效；
-/// - 运行中且输入为空时，主按钮变成「发出全部排队消息」；
-/// - 未聚焦且无内容（文字+附件）且未运行时收起为单行胶囊（对齐 Qoder 移动端
-///   参考样式），聚焦或出现内容后展开为完整输入卡。
+/// 布局对齐 Qoder 桌面端 composer：卡片内输入内容上方独立一行显示计划
+/// chip 与附件卡片；输入框独占一行；底行左侧为「+」圆钮（指令与附件
+/// 统一入口）与盾牌权限钮，右侧为模型选择与 34px 停止/发送圆钮。会话
+/// 模式只在新建任务页选择（会话开始后宿主固定预设）。
+/// - 计划模式在「+」菜单中开关，经 /plan 落笔生效；
+/// - 主按钮按会话状态切换：有内容→发送；运行中且无内容→停止（收起态胶囊
+///   同样生效）；空闲且无内容→禁用态发送；
+/// - 未聚焦且无内容（文字+附件）且未进入计划模式时收起为单行胶囊（对齐
+///   Qoder 移动端参考样式），聚焦或出现内容后展开为完整输入卡。
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../app/theme.dart';
-import '../../../core/models/dsh_session.dart';
-import '../../../widgets/common.dart';
-import '../session_providers.dart';
+import '../../app/theme.dart';
+import '../../widgets/common.dart';
 import 'attachment_rail.dart';
 import 'attachment_sources.dart';
 import 'composer_controller.dart';
@@ -44,7 +43,7 @@ class ComposerActions {
 
 class ComposerBar extends StatefulWidget {
   final ComposerController controller;
-  final SessionViewState view;
+  final ComposerViewData view;
   final AttachmentSources sources;
   final ComposerActions actions;
   final ValueChanged<String> onError;
@@ -88,14 +87,14 @@ class _ComposerBarState extends State<ComposerBar> {
     super.dispose();
   }
 
-  void _syncEnvironment(SessionViewState view) {
+  void _syncEnvironment(ComposerViewData view) {
     _controller.attachments.updateLimits(view.imageLimits);
     _controller.syncEnvironment(
       ComposerEnvironment(
-        ready: view.hasSnapshot && !view.waitingSnapshot,
+        ready: view.ready,
         running: view.running,
-        offline: view.isOffline,
-        planMode: view.plan?.active ?? false,
+        offline: view.offline,
+        planMode: view.planActive,
         workspaceName: view.cwd,
       ),
     );
@@ -116,8 +115,10 @@ class _ComposerBarState extends State<ComposerBar> {
   /// 且无内容时在 build 中复位，避免卡在展开态。
   bool _expandRequested = false;
 
-  /// 收起态：键盘未激活、无任何内容（文字+附件）且会话未运行时，输入条
-  /// 退化为单行胶囊（左「+」+ 占位文字 + 右侧聚焦圆钮），对齐参考样式。
+  /// 收起态：键盘未激活、无任何内容（文字+附件）且未进入计划模式时，输入条
+  /// 退化为单行胶囊（左「+」+ 占位文字 + 右侧发送/停止圆钮），对齐参考样式。
+  ///
+  /// 会话运行中同样收起，此时右侧圆钮显示停止，不展开也能中止回合。
   ///
   /// 用键盘可见性而非 FocusNode.hasFocus 判定：移动端键盘收起后 Flutter
   /// 仍保留焦点，按 hasFocus 会一直保持展开，不符合「键盘未激活即收起」。
@@ -127,8 +128,7 @@ class _ComposerBarState extends State<ComposerBar> {
       !_controller.hasContent &&
       // 计划模式激活期保持展开：计划 chip 只在展开卡顶部渲染，塌回收起态
       // 会丢失状态展示（也发生在空内容下切计划模式弹层收起键盘的场景）。
-      !_controller.environment.planMode &&
-      !_controller.environment.running;
+      !_controller.environment.planMode;
 
   /// 硬件键盘：Esc 关闭菜单，↑/↓ 在菜单内移动高亮。
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
@@ -172,10 +172,6 @@ class _ComposerBarState extends State<ComposerBar> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (!_collapsed) ...[
-                    _buildTopRow(),
-                    const SizedBox(height: DshSpace.x2),
-                  ],
                   AnimatedContainer(
                     duration: DshMotion.fast,
                     curve: DshMotion.curve,
@@ -209,36 +205,13 @@ class _ComposerBarState extends State<ComposerBar> {
     );
   }
 
-  /// 卡片上方选择器行：工作区与会话模式均靠左排列（对齐 Qoder 顶行）。
-  Widget _buildTopRow() {
-    final view = widget.view;
-    final planActive = view.plan?.active ?? false;
-    return Row(
-      children: [
-        _MetaChip(
-          icon: Icons.folder_outlined,
-          label: folderNameOf(view.cwd) ?? '默认工作区',
-          chevron: true,
-          onTap: _showWorkspaceSheet,
-        ),
-        const SizedBox(width: DshSpace.x2),
-        _MetaChip(
-          icon: Icons.adjust,
-          label: planActive ? '计划模式' : '标准模式',
-          chevron: true,
-          onTap: view.hasSnapshot ? _showModeSheet : null,
-        ),
-      ],
-    );
-  }
-
-  /// 收起态单行胶囊：左「+」+ 占位文字 + 右侧黑色聚焦圆钮（对齐参考图）。
+  /// 收起态单行胶囊：左「+」+ 占位文字 + 右侧发送/停止圆钮（对齐参考图）。
   ///
   /// 中间不是真实 TextField——两个 TextField 抢焦点会导致激活事件冲突，
   /// 这里只放一个占位文本，点击胶囊任意处换出展开态的真实输入框。
   Widget _buildCollapsedRow({required Key key}) {
     final p = context.dsh;
-    final view = widget.view;
+    final ready = widget.view.ready;
     return Row(
       key: key,
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -246,7 +219,7 @@ class _ComposerBarState extends State<ComposerBar> {
         // 参考图无灰色圆底，用裸「+」图标钮，功能同展开态底行「+」。
         InkWell(
           borderRadius: BorderRadius.circular(DshRadius.pill),
-          onTap: view.hasSnapshot ? _showCommandSheet : null,
+          onTap: ready ? _showCommandSheet : null,
           child: Tooltip(
             message: '指令与附件',
             child: SizedBox(
@@ -273,13 +246,23 @@ class _ComposerBarState extends State<ComposerBar> {
             ),
           ),
         ),
-        PrimaryRoundButton(
-          icon: Icons.arrow_upward_rounded,
-          size: DshButton.composer,
-          semanticLabel: '输入',
-          // 无语音能力：点击聚焦输入框，弹起键盘并展开为完整输入卡。
-          onTap: _expandAndFocus,
-        ),
+        // 右侧主钮随会话状态切换：运行中→停止；空闲→发送箭头（点击展开并聚焦）。
+        if (widget.view.running)
+          PrimaryRoundButton(
+            icon: Icons.stop_rounded,
+            size: DshButton.composer,
+            // color: p.accentBlue,
+            semanticLabel: '停止',
+            onTap: widget.actions.cancelTurn,
+          )
+        else
+          PrimaryRoundButton(
+            icon: Icons.arrow_upward_rounded,
+            size: DshButton.composer,
+            semanticLabel: '发送',
+            // 无语音能力：空闲时点击聚焦输入框，弹起键盘并展开为完整输入卡。
+            onTap: _expandAndFocus,
+          ),
       ],
     );
   }
@@ -332,7 +315,7 @@ class _ComposerBarState extends State<ComposerBar> {
       child: TextField(
         controller: _controller.text,
         focusNode: _focus,
-        minLines: 1,
+        minLines: 2,
         maxLines: 4,
         textInputAction: TextInputAction.send,
         style: context.dshText.bodyMedium,
@@ -349,7 +332,7 @@ class _ComposerBarState extends State<ComposerBar> {
 
   /// 底行：「+」与盾牌权限钮在左，模型选择靠右紧挨停止/发送钮（对齐 Qoder）。
   Widget _buildBottomRow() {
-    final view = widget.view;
+    final ready = widget.view.ready;
     const gap = SizedBox(width: DshSpace.x2);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -357,14 +340,12 @@ class _ComposerBarState extends State<ComposerBar> {
         _RoundToolButton(
           icon: Icons.add,
           tooltip: '指令与附件',
-          onPressed: view.hasSnapshot ? _showCommandSheet : null,
+          onPressed: ready ? _showCommandSheet : null,
         ),
         gap,
         _PermissionButton(
           tooltip: '权限',
-          onPressed: view.hasSnapshot
-              ? widget.actions.showPermissionPicker
-              : null,
+          onPressed: ready ? widget.actions.showPermissionPicker : null,
         ),
         const Spacer(),
         ConstrainedBox(
@@ -379,7 +360,7 @@ class _ComposerBarState extends State<ComposerBar> {
                 children: [
                   Flexible(
                     child: Text(
-                      view.selectedModel ?? '未选择模型',
+                      widget.view.selectedModel ?? '未选择模型',
                       overflow: TextOverflow.ellipsis,
                       style: context.dshText.bodySmall?.copyWith(
                         color: context.dsh.midText,
@@ -421,7 +402,7 @@ class _ComposerBarState extends State<ComposerBar> {
         PrimaryRoundButton(
           icon: Icons.stop_rounded,
           size: DshButton.composer,
-          color: context.dsh.accentBlue,
+          // color: context.dsh.accentBlue,
           semanticLabel: '停止',
           onTap: widget.actions.cancelTurn,
         ),
@@ -439,7 +420,7 @@ class _ComposerBarState extends State<ComposerBar> {
 
   // ------------------------------------------------------------------ 弹层入口
 
-  /// 「添加」菜单：目标 / 附件 / 宿主命令表（对齐 Qoder 底行「+」）。
+  /// 「添加」菜单：目标 / 计划模式 / 附件 / 宿主命令表（对齐 Qoder 底行「+」）。
   void _showCommandSheet() {
     final actions = widget.actions;
     final controller = _controller;
@@ -466,6 +447,14 @@ class _ComposerBarState extends State<ComposerBar> {
                 icon: Icons.flag_outlined,
                 label: '设定目标',
                 onTap: () => closeAndRun(actions.showGoalEditor),
+              ),
+              _LauncherTile(
+                icon: Icons.assignment_outlined,
+                label: '计划模式',
+                trailing: widget.view.planActive
+                    ? const Icon(Icons.check_rounded, size: 18)
+                    : null,
+                onTap: () => closeAndRun(actions.togglePlan),
               ),
               const _LauncherSectionTitle(label: '附件'),
               _LauncherTile(
@@ -531,78 +520,6 @@ class _ComposerBarState extends State<ComposerBar> {
     );
   }
 
-  /// 工作区菜单：展示末段名与完整路径。
-  void _showWorkspaceSheet() {
-    final cwd = widget.view.cwd ?? '';
-    showDshSheet<void>(
-      context,
-      builder: (sheetContext) {
-        void close() => Navigator.of(sheetContext).pop();
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const DshSheetTitle(title: '工作区'),
-            if (cwd.isEmpty)
-              _LauncherTile(
-                icon: Icons.folder_off_outlined,
-                label: '未指定工作区目录',
-                onTap: close,
-              )
-            else
-              _LauncherTile(
-                icon: Icons.folder_outlined,
-                label: folderNameOf(cwd) ?? cwd,
-                caption: cwd,
-                onTap: close,
-              ),
-            const SizedBox(height: DshSpace.x2),
-          ],
-        );
-      },
-    );
-  }
-
-  /// 会话模式菜单：标准模式 / 计划模式（togglePlan 为开关语义）。
-  void _showModeSheet() {
-    final planActive = widget.view.plan?.active ?? false;
-    showDshSheet<void>(
-      context,
-      builder: (sheetContext) {
-        void close() => Navigator.of(sheetContext).pop();
-        void closeAndToggle() {
-          Navigator.of(sheetContext).pop();
-          widget.actions.togglePlan();
-        }
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const DshSheetTitle(title: '会话模式'),
-            _LauncherTile(
-              icon: Icons.adjust,
-              label: '标准模式',
-              trailing: planActive
-                  ? null
-                  : const Icon(Icons.check_rounded, size: 18),
-              onTap: planActive ? closeAndToggle : close,
-            ),
-            _LauncherTile(
-              icon: Icons.assignment_outlined,
-              label: '计划模式',
-              trailing: planActive
-                  ? const Icon(Icons.check_rounded, size: 18)
-                  : null,
-              onTap: planActive ? close : closeAndToggle,
-            ),
-            const SizedBox(height: DshSpace.x2),
-          ],
-        );
-      },
-    );
-  }
-
   Future<void> _pickImages({required bool camera}) async {
     final store = _controller.attachments;
     final remaining = store.limits.maxImagesPerMessage - store.imageCount;
@@ -659,57 +576,6 @@ class _RoundToolButton extends StatelessWidget {
             width: DshButton.tool,
             height: DshButton.tool,
             child: Icon(icon, size: DshIcon.tool, color: p.midText),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MetaChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool chevron;
-  final VoidCallback? onTap;
-
-  const _MetaChip({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.chevron = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.dsh;
-    return Material(
-      color: p.chipGray,
-      borderRadius: BorderRadius.circular(DshRadius.pill),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(DshRadius.pill),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 13, color: p.secondaryText),
-              const SizedBox(width: 4),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 160),
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.dshText.labelSmall?.copyWith(color: p.midText),
-                ),
-              ),
-              if (chevron)
-                Icon(
-                  Icons.arrow_drop_down_rounded,
-                  size: 15,
-                  color: p.secondaryText,
-                ),
-            ],
           ),
         ),
       ),

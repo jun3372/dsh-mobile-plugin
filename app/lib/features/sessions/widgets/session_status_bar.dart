@@ -38,6 +38,7 @@ class SessionStatusBar extends StatelessWidget {
     ];
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
+      color: Colors.transparent,
       child: Row(
         children: [
           Expanded(

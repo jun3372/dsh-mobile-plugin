@@ -6,6 +6,7 @@ import '../app/theme.dart';
 import '../core/errors.dart';
 
 /// 白色圆形图标按钮（返回钮等，SPEC §3：44×44、图标 20、1px 细边 + 轻阴影）。
+/// 标题栏左右按钮传 `size: DshHeaderMetrics.button` + `iconSize: DshIcon.header` 收紧。
 class CircleButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onTap;
@@ -15,6 +16,12 @@ class CircleButton extends StatelessWidget {
   final Color? backgroundColor;
   final Color? foregroundColor;
 
+  /// 图标视觉尺寸；标题栏左右按钮传 [DshIcon.header]。
+  final double iconSize;
+
+  /// 圆形背景直径；标题栏左右按钮传 [DshHeaderMetrics.button]。
+  final double size;
+
   const CircleButton({
     super.key,
     required this.icon,
@@ -22,6 +29,8 @@ class CircleButton extends StatelessWidget {
     this.tooltip,
     this.backgroundColor,
     this.foregroundColor,
+    this.iconSize = DshIcon.action,
+    this.size = DshTouch.minTarget,
   });
 
   @override
@@ -51,9 +60,9 @@ class CircleButton extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: SizedBox(
-            width: DshTouch.minTarget,
-            height: DshTouch.minTarget,
-            child: Icon(icon, size: DshIcon.action, color: foreground),
+            width: size,
+            height: size,
+            child: Icon(icon, size: iconSize, color: foreground),
           ),
         ),
       ),

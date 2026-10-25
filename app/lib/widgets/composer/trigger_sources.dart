@@ -8,8 +8,8 @@
 ///   `sessionReferenceResolver/candidates`（会话）两组候选。
 library;
 
-import '../../../../core/models/composer_models.dart';
-import '../../../../core/services/dsh_api.dart';
+import '../../core/models/composer_models.dart';
+import '../../core/services/dsh_api.dart';
 import 'composer_document.dart';
 
 /// 一条菜单候选。

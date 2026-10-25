@@ -3,31 +3,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme.dart';
 import '../../core/errors.dart';
+import '../../core/models/agent_mode.dart';
 import '../../core/models/composer_models.dart';
 import '../../core/models/dsh_session.dart';
-import '../../core/models/server_profile.dart';
 import '../../core/mux/workspace_hub.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/dsh_api.dart';
+import '../../widgets/agent_mode_sheet.dart';
 import '../../widgets/common.dart';
 import '../../widgets/model_picker_sheet.dart';
 import '../servers/servers_providers.dart';
 import '../sessions/session_page.dart';
 import 'tasks_providers.dart';
 import 'widgets/hero_header.dart';
-import 'widgets/new_task_input_card.dart';
-
-/// 任务模式（对齐 Web 端「标准模式」选择器；宿主暂无对应概念，仅本地态）。
-enum TaskMode {
-  standard('标准模式', '处理代码、文件和资料，适合大多数任务。'),
-  ptc('PTC 模式', '包含标准模式的所有能力，更适合批量调用工具，并对结果进行筛选、整理、去重、统计或汇总的任务。'),
-  minimal('极简模式', 'Agent 使用终端和图片读取工具，并支持上下文压缩，适合测试和对比其基础表现。'),
-  creative('创造模式', '用对话定制 DSH：让 Agent 编写插件，添加新功能或界面；也能组合工具和提示词，创建自己的模式。');
-
-  final String label;
-  final String description;
-
-  const TaskMode(this.label, this.description);
-}
+import '../../widgets/composer/attachment_sources.dart';
+import '../../widgets/composer/attachment_store.dart';
+import '../../widgets/composer/composer_bar.dart';
+import '../../widgets/composer/composer_controller.dart';
+import '../../widgets/composer/trigger_sources.dart';
 
 /// 新建会话页（对齐 Web 端：大标题 + 选择器胶囊 + 白卡输入）。
 class NewTaskPage extends ConsumerStatefulWidget {
@@ -38,38 +31,42 @@ class NewTaskPage extends ConsumerStatefulWidget {
 }
 
 class _NewTaskPageState extends ConsumerState<NewTaskPage> {
-  final _inputController = TextEditingController();
-  final _inputFocus = FocusNode();
-  bool _sending = false;
+  /// 建会话前的占位 id：仅用于构造 composer 签名，不发给宿主。
+  static const _pendingSessionId = 'new';
+
   String? _selectedWorkspace;
   bool _workspaceChosen = false;
-  TaskMode _mode = TaskMode.standard;
+  AgentMode _mode = AgentMode.standard;
   PermissionPresetOption? _permission;
   ModelSelection? _model;
   bool _planMode = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _inputFocus.addListener(() {
-      if (mounted) setState(() {});
-    });
-    _inputController.addListener(() {
-      if (mounted) setState(() {});
-    });
-  }
+  /// 附件存储与输入条控制器随宿主 api 就绪而创建（无会话时文件上传排队）。
+  AttachmentStore? _attachments;
+
+  ComposerController? _composer;
+
+  DshApi? _composerApi;
+
+  /// 会话创建去重：附件触发与点发送可能并发触发建会话。
+  Future<String>? _ensuringSession;
+
+  /// 首个创建的会话 id（附件触发预建后，发送时复用，不再新建）。
+  String? _createdSessionId;
+
+  /// 已落到会话上的 preset，避免重复切换。
+  String? _appliedPreset;
 
   @override
   void dispose() {
-    _inputController.dispose();
-    _inputFocus.dispose();
+    _composer?.dispose();
+    _composer = null;
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final p = context.dsh;
-    final server = ref.watch(currentServerProvider);
     final workspaces = ref.watch(workspacesProvider);
     final workspace = _effectiveWorkspace(workspaces);
 
@@ -85,6 +82,8 @@ class _NewTaskPageState extends ConsumerState<NewTaskPage> {
               padding: const EdgeInsets.all(DshSpace.x3),
               child: CircleButton(
                 icon: Icons.arrow_back_ios_new_rounded,
+                iconSize: DshIcon.header,
+                size: DshHeaderMetrics.button,
                 tooltip: '返回',
                 onTap: () => Navigator.of(context).pop(),
               ),
@@ -93,7 +92,8 @@ class _NewTaskPageState extends ConsumerState<NewTaskPage> {
             const Center(child: HeroHeader()),
             const Spacer(),
             _buildSelectors(workspaces, workspace),
-            _buildInputCard(server),
+            const SizedBox(height: DshSpace.x1),
+            _buildComposerArea(workspaces, workspace),
           ],
         ),
       ),
@@ -186,158 +186,236 @@ class _NewTaskPageState extends ConsumerState<NewTaskPage> {
     );
   }
 
-  /// 模式选择（截图对齐：四项带描述，仅本地态）。
+  /// 模式选择：四项共享 Agent 预设选择器。
   Future<void> _pickMode() async {
-    await showDshSheet<void>(
+    final picked = await showAgentModeSheet(
       context,
-      builder: (sheetContext) => SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const DshSheetTitle(title: '会话模式'),
-            for (final mode in TaskMode.values)
-              ListTile(
-                title: Text(mode.label),
-                subtitle: Text(
-                  mode.description,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: mode == _mode
-                    ? const Icon(Icons.check, size: 20)
-                    : null,
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  setState(() => _mode = mode);
-                },
-              ),
-            const SizedBox(height: DshSpace.x2),
-          ],
+      currentPresetId: _mode.presetId,
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _mode = picked);
+  }
+
+  /// 底部输入区：公用 ComposerBar（工作区/模式走页面胶囊行）。
+  Widget _buildComposerArea(List<WorkspaceRow> workspaces, String? workspace) {
+    final composer = _ensureComposer();
+    if (composer == null) return const SizedBox.shrink();
+    return ComposerBar(
+      controller: composer,
+      view: ComposerViewData(
+        ready: true,
+        running: false,
+        offline: false,
+        planActive: _planMode,
+        cwd: workspace,
+        selectedModel: _model?.$4,
+      ),
+      sources: _sources ??= AttachmentSources(),
+      actions: _composerActions(),
+      onError: (message) => showDshSnack(context, message),
+    );
+  }
+
+  AttachmentSources? _sources;
+
+  /// 输入条控制器随宿主 api 就绪/切换而创建或重建。
+  ComposerController? _ensureComposer() {
+    final api = ref.read(dshApiProvider);
+    if (api == null) {
+      _composer?.dispose();
+      _composer = null;
+      _attachments = null;
+      _composerApi = null;
+      return null;
+    }
+    if (_composer != null && identical(_composerApi, api)) return _composer;
+    _composer?.dispose();
+    _composerApi = api;
+    final attachments = AttachmentStore(api: api, sessionId: _pendingSessionId);
+    final controller = ComposerController(
+      sessionId: _pendingSessionId,
+      // 会话尚未创建：文件/会话引用两组 @ 候选不可用，只挂 / 指令源
+      // （commands/list 失败有兜底，装饰项 /model /permission /plan 仍在）。
+      sources: [
+        CommandSource(
+          api: api,
+          sessionId: _pendingSessionId,
+          onPickModel: _pickModel,
+          onPickPermission: _pickPermission,
+          onPickPlan: () => setState(() => _planMode = !_planMode),
+        ),
+      ],
+      attachments: attachments,
+      // 建会话前不落草稿（没有可归属的 sessionId）。
+      drafts: null,
+      ports: ComposerPorts(
+        send: _sendPort,
+        executeCommand: _executeCommandPort,
+      ),
+    );
+    // 菜单里的纯 UI 动作（打开模型/权限/计划）由页面处理。
+    controller.onPickAction = (pick) => pick.onPick?.call();
+    // 文件附件需要有效会话才能上传：选择文件后立即预建会话并开泵上传。
+    attachments.addListener(_onAttachmentsChanged);
+    _attachments = attachments;
+    _composer = controller;
+    return controller;
+  }
+
+  /// 文件附件到达且尚无会话：预建会话（延迟选择一并落笔）再上传。
+  Future<void> _onAttachmentsChanged() async {
+    final store = _attachments;
+    if (store == null || store.hasSession) return;
+    if (!store.items.any((item) => !item.isImage)) return;
+    final api = ref.read(dshApiProvider);
+    if (api == null) return;
+    try {
+      final sessionId = await _ensureSession(api);
+      store.attachSession(sessionId);
+    } on AppException catch (e) {
+      if (mounted) showDshError(context, e.userMessage);
+    }
+  }
+
+  ComposerActions _composerActions() => ComposerActions(
+    showModelPicker: _pickModel,
+    showPermissionPicker: _pickPermission,
+    togglePlan: () => setState(() => _planMode = !_planMode),
+    showGoalEditor: () => showDshSnack(context, '目标能力开发中'),
+    // 新建页 running 恒为 false，停止钮不会出现。
+    cancelTurn: () {},
+    hostCommands: () async {
+      final api = ref.read(dshApiProvider);
+      if (api == null) return const [];
+      try {
+        return await api
+            .commands(sessionId: _createdSessionId ?? _pendingSessionId)
+            .then(
+              (items) => [
+                for (final command in items)
+                  if (command.slash != '/plan')
+                    TriggerItem(
+                      title: command.slash,
+                      subtitle: command.description,
+                    ),
+              ],
+            );
+      } catch (_) {
+        return const [];
+      }
+    },
+  );
+
+  /// 创建会话并落本页延迟生效的选择（模型 / 权限 / 计划模式），幂等。
+  Future<String> _ensureSession(DshApi api) {
+    return _ensuringSession ??= _doEnsureSession(
+      api,
+    ).whenComplete(() => _ensuringSession = null);
+  }
+
+  Future<String> _doEnsureSession(DshApi api) async {
+    final existing = _createdSessionId;
+    if (existing != null) {
+      await _applyMode(api, existing);
+      return existing;
+    }
+    final rows = ref.read(workspacesProvider);
+    final cwd = _effectiveWorkspace(rows);
+    // 宿主只在带 workspaceId 建会话时把会话挂进工作区；仅传 cwd 的会话
+    // 会一直停留在「未分组」，所以优先按选中行的 workspaceId 创建。
+    final workspaceId = rows
+        .where((row) => row.path == cwd)
+        .map((row) => row.workspaceId)
+        .firstOrNull;
+    final sessionId = await api.createSession(
+      workspaceId: workspaceId,
+      cwd: workspaceId == null ? cwd : null,
+    );
+    _createdSessionId = sessionId;
+    // preset 先落：切换会重挂 Agent 插件，权限/计划命令依赖新组装。
+    await _applyMode(api, sessionId);
+    final model = _model;
+    if (model != null) {
+      final (provider, modelId, effort, _) = model;
+      await api.selectModel(
+        sessionId: sessionId,
+        provider: provider,
+        model: modelId,
+        reasoningEffort: effort,
+      );
+    }
+    final permission = _permission;
+    if (permission != null) {
+      await api.executeCommand(
+        sessionId: sessionId,
+        line: '/permission ${permission.value}',
+      );
+    }
+    if (_planMode) {
+      await api.executeCommand(sessionId: sessionId, line: '/plan');
+    }
+    return sessionId;
+  }
+
+  Future<void> _applyMode(DshApi api, String sessionId) async {
+    final presetId = _mode.presetId;
+    if (_appliedPreset == presetId) return;
+    await api.selectAgentPreset(sessionId: sessionId, presetId: presetId);
+    _appliedPreset = presetId;
+  }
+
+  /// ComposerPorts.send：建会话 → prompt → 跳转会话详情页。
+  Future<void> _sendPort(
+    String text,
+    List<PromptAttachment> attachments,
+    String mode,
+  ) async {
+    final api = ref.read(dshApiProvider);
+    if (api == null) {
+      // 抛错走 ComposerController 的统一失败路径：回填文本并提示。
+      throw ServerException('请先绑定服务端');
+    }
+    final trimmed = text.trim();
+    if (trimmed.isEmpty && attachments.isEmpty) return;
+    final sessionId = await _ensureSession(api);
+    await api.prompt(
+      sessionId: sessionId,
+      requestId: newRpcId(),
+      text: trimmed,
+      attachments: attachments,
+    );
+    if (!mounted) return;
+    ref.invalidate(tasksProvider);
+    final cwd = _effectiveWorkspace(ref.read(workspacesProvider));
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => SessionPage(
+          summary: SessionSummary(
+            sessionId: sessionId,
+            title: trimmed,
+            updatedAt: DateTime.now(),
+            running: true,
+            blank: false,
+            cwd: cwd,
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildInputCard(ServerProfile? server) {
-    return NewTaskInputCard(
-      controller: _inputController,
-      focus: _inputFocus,
-      sending: _sending,
-      onSend: () => _send(server),
-      onPickAdd: _showAddSheet,
-      onPickPermission: _pickPermission,
-      onPickModel: _pickModel,
-      onTogglePlan: () => setState(() => _planMode = !_planMode),
-      planActive: _planMode,
-      permissionLabel: _permission?.name ?? '',
-      modelLabel: _model?.$4 ?? 'auto',
-    );
-  }
-
-  /// 「+」菜单（对齐 Web 端：添加 + 指令两个分组）。
-  /// 无会话上下文的项（文件/目标/反馈/压缩/下载日志）为占位入口。
-  Future<void> _showAddSheet() async {
-    await showDshSheet<void>(
-      context,
-      heightFactor: 0.75,
-      builder: (sheetContext) {
-        void stub(String message) {
-          Navigator.of(sheetContext).pop();
-          showDshSnack(context, message);
-        }
-
-        return SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const DshSheetTitle(title: '添加'),
-              _SheetTile(
-                icon: Icons.attach_file_outlined,
-                title: '文件',
-                keyword: 'file',
-                onTap: () => stub('发送后在会话中添加文件'),
-              ),
-              _SheetTile(
-                icon: Icons.flag_outlined,
-                title: '目标',
-                keyword: 'goal',
-                subtitle: '设置或查看长期任务目标',
-                onTap: () => stub('目标能力开发中'),
-              ),
-              _SheetTile(
-                icon: Icons.assignment_outlined,
-                title: '计划',
-                keyword: 'plan',
-                subtitle: '进入或退出计划模式',
-                trailing: _planMode ? const Icon(Icons.check, size: 20) : null,
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  setState(() => _planMode = !_planMode);
-                },
-              ),
-              _SheetTile(
-                icon: Icons.send_outlined,
-                title: '反馈',
-                keyword: 'feedback',
-                subtitle: '发送关于当前会话的反馈',
-                onTap: () => stub('反馈渠道开发中'),
-              ),
-              const Divider(height: DshSpace.x4),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  DshSpace.x5,
-                  DshSpace.x1,
-                  DshSpace.x5,
-                  DshSpace.x1,
-                ),
-                child: Text(
-                  '指令',
-                  style: context.dshText.labelSmall?.copyWith(
-                    color: context.dsh.tertiaryText,
-                  ),
-                ),
-              ),
-              _SheetTile(
-                icon: Icons.compress_outlined,
-                title: '压缩',
-                keyword: 'compact',
-                subtitle: '压缩以上对话内容',
-                onTap: () => stub('发送后在会话中使用 /compact'),
-              ),
-              _SheetTile(
-                icon: Icons.shield_outlined,
-                title: '权限',
-                keyword: 'permission',
-                subtitle: '切换权限预设（沙箱模式与审查）',
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _pickPermission();
-                },
-              ),
-              _SheetTile(
-                icon: Icons.tune,
-                title: '模型',
-                keyword: 'model',
-                subtitle: '选择本会话使用的模型',
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _pickModel();
-                },
-              ),
-              _SheetTile(
-                icon: Icons.download_outlined,
-                title: '下载日志',
-                keyword: 'export',
-                subtitle: '将当前会话内容导出为 ZIP',
-                onTap: () => stub('发送后在会话中导出'),
-              ),
-              const SizedBox(height: DshSpace.x2),
-            ],
-          ),
-        );
-      },
+  /// ComposerPorts.executeCommand：会话尚未创建时先建会话再执行；
+  /// 不导航，失败由 ComposerController 统一回填草稿并提示。
+  Future<CommandExecution> _executeCommandPort(
+    String line,
+    List<PromptAttachment> attachments,
+  ) async {
+    final api = ref.read(dshApiProvider);
+    if (api == null) return const CommandExecution(matched: false, ok: false);
+    final sessionId = await _ensureSession(api);
+    return api.executeCommand(
+      sessionId: sessionId,
+      line: line,
+      attachments: attachments,
     );
   }
 
@@ -473,63 +551,6 @@ class _NewTaskPageState extends ConsumerState<NewTaskPage> {
     if (path == null || path.isEmpty) return null;
     return path;
   }
-
-  Future<void> _send(ServerProfile? server) async {
-    final text = _inputController.text.trim();
-    if (text.isEmpty || _sending) return;
-    final api = ref.read(dshApiProvider);
-    if (api == null) {
-      showDshSnack(context, '请先绑定服务端');
-      return;
-    }
-    final cwd = _effectiveWorkspace(ref.read(workspacesProvider));
-    setState(() => _sending = true);
-    try {
-      final sessionId = await api.createSession(cwd: cwd);
-      // 发送前落本页延迟生效的选择：模型 / 权限 / 计划模式。
-      final model = _model;
-      if (model != null) {
-        final (provider, modelId, effort, _) = model;
-        await api.selectModel(
-          sessionId: sessionId,
-          provider: provider,
-          model: modelId,
-          reasoningEffort: effort,
-        );
-      }
-      final permission = _permission;
-      if (permission != null) {
-        await api.executeCommand(
-          sessionId: sessionId,
-          line: '/permission ${permission.value}',
-        );
-      }
-      if (_planMode) {
-        await api.executeCommand(sessionId: sessionId, line: '/plan');
-      }
-      await api.prompt(sessionId: sessionId, requestId: newRpcId(), text: text);
-      if (!mounted) return;
-      ref.invalidate(tasksProvider);
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => SessionPage(
-            summary: SessionSummary(
-              sessionId: sessionId,
-              title: text,
-              updatedAt: DateTime.now(),
-              running: true,
-              blank: false,
-              cwd: cwd,
-            ),
-          ),
-        ),
-      );
-    } on AppException catch (e) {
-      if (mounted) showDshError(context, e.userMessage);
-    } finally {
-      if (mounted) setState(() => _sending = false);
-    }
-  }
 }
 
 /// 工作区选择结果；[path] 为 null 表示显式选择默认工作区，
@@ -539,62 +560,4 @@ class _WorkspaceChoice {
   final bool created;
 
   const _WorkspaceChoice(this.path, {this.created = false});
-}
-
-/// 「+」面板条目：图标 + 标题 + 灰色英文关键词（+ 可选描述）。
-class _SheetTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String keyword;
-  final String? subtitle;
-  final Widget? trailing;
-  final VoidCallback onTap;
-
-  const _SheetTile({
-    required this.icon,
-    required this.title,
-    required this.keyword,
-    required this.onTap,
-    this.subtitle,
-    this.trailing,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.dsh;
-    return ListTile(
-      leading: Icon(icon, size: 20, color: p.foreground),
-      title: Row(
-        children: [
-          Text(
-            title,
-            style: context.dshText.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(width: DshSpace.x2),
-          Text(
-            keyword,
-            style: context.dshText.bodySmall?.copyWith(
-              fontSize: 13,
-              color: p.tertiaryText,
-            ),
-          ),
-        ],
-      ),
-      subtitle: subtitle == null
-          ? null
-          : Text(
-              subtitle!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: context.dshText.bodySmall?.copyWith(
-                fontSize: 13,
-                color: p.secondaryText,
-              ),
-            ),
-      trailing: trailing,
-      onTap: onTap,
-    );
-  }
 }

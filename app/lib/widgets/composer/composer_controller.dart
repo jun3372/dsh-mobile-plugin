@@ -13,9 +13,10 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
-import '../../../core/errors.dart';
-import '../../../core/models/composer_models.dart';
-import '../../../core/services/dsh_api.dart';
+import '../../core/errors.dart';
+import '../../core/models/composer_models.dart';
+import '../../core/models/dsh_models.dart';
+import '../../core/services/dsh_api.dart';
 import 'attachment_store.dart';
 import 'composer_draft_store.dart';
 import 'composer_document.dart';
@@ -25,7 +26,6 @@ import 'trigger_sources.dart';
 /// 占位文案的状态优先级（与 Web 的 input placeholder 分支一致）。
 enum ComposerPlaceholderState {
   ready,
-  workspace,
   plan,
   steerQueue,
   parentOffline,
@@ -60,6 +60,44 @@ class ComposerEnvironment {
   @override
   int get hashCode =>
       Object.hash(ready, running, offline, planMode, workspaceName);
+}
+
+/// ComposerBar 渲染所需的页面快照：由页面从自己的视图状态投影而来，
+/// 让 composer 子系统不依赖任何 feature 层类型。
+class ComposerViewData {
+  final ImageLimits imageLimits;
+  final bool ready;
+  final bool running;
+  final bool offline;
+  final bool planActive;
+  final String? cwd;
+  final String? selectedModel;
+
+  const ComposerViewData({
+    this.imageLimits = const ImageLimits(),
+    this.ready = false,
+    this.running = false,
+    this.offline = false,
+    this.planActive = false,
+    this.cwd,
+    this.selectedModel,
+  });
+
+  // imageLimits 不参与相等性：宿主投影可能每帧给新实例，且 limits 本就
+  // 由 didUpdateWidget 每次同步到 AttachmentStore。
+  @override
+  bool operator ==(Object other) =>
+      other is ComposerViewData &&
+      other.ready == ready &&
+      other.running == running &&
+      other.offline == offline &&
+      other.planActive == planActive &&
+      other.cwd == cwd &&
+      other.selectedModel == selectedModel;
+
+  @override
+  int get hashCode =>
+      Object.hash(ready, running, offline, planActive, cwd, selectedModel);
 }
 
 /// 提交出口：由页面用会话 Notifier 的 tear-off 注入，composer 子系统不依赖 riverpod。
@@ -169,24 +207,16 @@ class ComposerController extends ChangeNotifier {
     if (environment.offline) return ComposerPlaceholderState.parentOffline;
     if (environment.planMode) return ComposerPlaceholderState.plan;
     if (showSteerAll) return ComposerPlaceholderState.steerQueue;
-    if (environment.workspaceName != null &&
-        environment.workspaceName!.isNotEmpty) {
-      return ComposerPlaceholderState.workspace;
-    }
     return ComposerPlaceholderState.ready;
   }
 
   String get placeholderText {
-    final workspace = environment.workspaceName;
     return switch (placeholderState) {
       ComposerPlaceholderState.unavailable => '正在恢复会话…',
       ComposerPlaceholderState.parentOffline => '连接已断开，重连后可继续发送',
       ComposerPlaceholderState.plan => '规划模式：描述目标或提出问题',
       ComposerPlaceholderState.steerQueue => '输入补充说明，发送后进入消息队列',
-      ComposerPlaceholderState.workspace =>
-        // 带工作区名时不再塞触发符提示，避免占位文案换行撑高输入卡。
-        '在 ${(workspace ?? '').split('/').last} 中描述任务',
-      ComposerPlaceholderState.ready => '描述你的任务 · / 指令 · @ 引用文件',
+      ComposerPlaceholderState.ready => '发消息或创建任务, / 调用指令, @ 文件或对话',
     };
   }
 

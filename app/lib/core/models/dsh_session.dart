@@ -30,6 +30,9 @@ class SessionSummary {
   final String? cwd;
   final int? asOfSeq;
 
+  /// 宿主 session/list 的 origin；子任务会话为 `subagent`。
+  final String? origin;
+
   const SessionSummary({
     required this.sessionId,
     this.title,
@@ -40,7 +43,11 @@ class SessionSummary {
     this.agentAvailable = false,
     this.cwd,
     this.asOfSeq,
+    this.origin,
   });
+
+  /// 子任务（子代理）会话只属于父会话，首页/归档等列表不单独展示。
+  bool get isSubagent => origin == 'subagent';
 
   /// cwd 末段，用作文件夹分组名（兼容 Windows 反斜杠路径）。
   String? get folderName => folderNameOf(cwd);
@@ -64,6 +71,7 @@ class SessionSummary {
       agentAvailable: agentAvailable ?? this.agentAvailable,
       cwd: cwd ?? this.cwd,
       asOfSeq: asOfSeq ?? this.asOfSeq,
+      origin: origin,
     );
   }
 
@@ -88,6 +96,7 @@ class SessionSummary {
       agentAvailable: json['agentAvailable'] == true,
       cwd: json['cwd'] as String?,
       asOfSeq: asOfSeq,
+      origin: json['origin'] as String?,
     );
   }
 }

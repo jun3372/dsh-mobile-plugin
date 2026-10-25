@@ -1,6 +1,6 @@
-import 'package:dsh_mobile/features/sessions/composer/composer_document.dart';
-import 'package:dsh_mobile/features/sessions/composer/trigger_menu_controller.dart';
-import 'package:dsh_mobile/features/sessions/composer/trigger_sources.dart';
+import 'package:dsh_mobile/widgets/composer/composer_document.dart';
+import 'package:dsh_mobile/widgets/composer/trigger_menu_controller.dart';
+import 'package:dsh_mobile/widgets/composer/trigger_sources.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeSource extends TriggerSource {

@@ -6,7 +6,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-import '../../../app/theme.dart';
+import '../../app/theme.dart';
 
 /// 一张灯箱图片。
 class PhotoFrame {

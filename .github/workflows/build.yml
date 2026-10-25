@@ -45,8 +45,12 @@ jobs:
           java-version: '17'
       - name: Install Android SDK components
         run: |
-          sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
-          yes | sdkmanager --licenses >/dev/null || true
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SM="$(find "$SDK/cmdline-tools" -maxdepth 4 -name sdkmanager -type f 2>/dev/null | sort -V | tail -1)"
+          if [ -z "$SM" ]; then echo "sdkmanager not found under $SDK"; exit 1; fi
+          echo "$(dirname "$SM")" >> "$GITHUB_PATH"
+          yes | "$SM" --licenses >/dev/null || true
+          "$SM" --install "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -82,9 +86,19 @@ jobs:
       - name: Build iOS (no codesign)
         working-directory: app
         run: |
+          flutter doctor -v
           flutter pub get
-          flutter build ios --release --no-codesign --no-tree-shake-icons \
+          flutter build ios --release --no-codesign --no-tree-shake-icons -v \
             --build-name "${{ env.APP_VERSION }}" --build-number "${{ github.run_number }}"
+      - name: Dump Xcode errors
+        if: failure()
+        working-directory: app/ios
+        run: |
+          xcodebuild -version
+          xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+            build 2>&1 | grep -v '^\s*$' | tail -n 150
       - name: Package unsigned IPA
         working-directory: app
         run: |

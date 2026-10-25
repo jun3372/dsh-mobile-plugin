@@ -313,6 +313,18 @@ void main() {
     expect((request['content'] as List).first, {'type': 'text', 'text': '你好'});
   });
 
+  test('selectAgentPreset 参数在 args 顶层', () async {
+    final api = apiWith((_) async => okRpc('cordis'));
+    await api.selectAgentPreset(sessionId: 's1', presetId: 'cordis');
+    expect(captured, hasLength(1));
+    final body = jsonDecode(captured.first.body) as Map<String, dynamic>;
+    expect(captured.first.url.path, '/api/agentPresets/select');
+    expect((body['payload'] as Map)['args'], {
+      'agentId': 's1',
+      'agentPreset': 'cordis',
+    });
+  });
+
   test('list 参数名固定为 _request', () async {
     final api = apiWith((_) async => okRpc({'items': []}));
     await api.listSessions();

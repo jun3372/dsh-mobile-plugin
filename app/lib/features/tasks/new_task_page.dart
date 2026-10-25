@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme.dart';
 import '../../core/errors.dart';
+import '../../core/models/agent_mode.dart';
 import '../../core/models/composer_models.dart';
 import '../../core/models/dsh_session.dart';
 import '../../core/mux/workspace_hub.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/dsh_api.dart';
+import '../../widgets/agent_mode_sheet.dart';
 import '../../widgets/common.dart';
 import '../../widgets/model_picker_sheet.dart';
 import '../servers/servers_providers.dart';
@@ -19,19 +21,6 @@ import '../../widgets/composer/attachment_store.dart';
 import '../../widgets/composer/composer_bar.dart';
 import '../../widgets/composer/composer_controller.dart';
 import '../../widgets/composer/trigger_sources.dart';
-
-/// 任务模式（对齐 Web 端「标准模式」选择器；宿主暂无对应概念，仅本地态）。
-enum TaskMode {
-  standard('标准模式', '处理代码、文件和资料，适合大多数任务。'),
-  ptc('PTC 模式', '包含标准模式的所有能力，更适合批量调用工具，并对结果进行筛选、整理、去重、统计或汇总的任务。'),
-  minimal('极简模式', 'Agent 使用终端和图片读取工具，并支持上下文压缩，适合测试和对比其基础表现。'),
-  creative('创造模式', '用对话定制 DSH：让 Agent 编写插件，添加新功能或界面；也能组合工具和提示词，创建自己的模式。');
-
-  final String label;
-  final String description;
-
-  const TaskMode(this.label, this.description);
-}
 
 /// 新建会话页（对齐 Web 端：大标题 + 选择器胶囊 + 白卡输入）。
 class NewTaskPage extends ConsumerStatefulWidget {
@@ -47,7 +36,7 @@ class _NewTaskPageState extends ConsumerState<NewTaskPage> {
 
   String? _selectedWorkspace;
   bool _workspaceChosen = false;
-  TaskMode _mode = TaskMode.standard;
+  AgentMode _mode = AgentMode.standard;
   PermissionPresetOption? _permission;
   ModelSelection? _model;
   bool _planMode = false;
@@ -64,6 +53,9 @@ class _NewTaskPageState extends ConsumerState<NewTaskPage> {
 
   /// 首个创建的会话 id（附件触发预建后，发送时复用，不再新建）。
   String? _createdSessionId;
+
+  /// 已落到会话上的 preset，避免重复切换。
+  String? _appliedPreset;
 
   @override
   void dispose() {
@@ -98,6 +90,7 @@ class _NewTaskPageState extends ConsumerState<NewTaskPage> {
             const Center(child: HeroHeader()),
             const Spacer(),
             _buildSelectors(workspaces, workspace),
+            const SizedBox(height: DshSpace.x1),
             _buildComposerArea(workspaces, workspace),
           ],
         ),
@@ -191,40 +184,17 @@ class _NewTaskPageState extends ConsumerState<NewTaskPage> {
     );
   }
 
-  /// 模式选择（截图对齐：四项带描述，仅本地态）。
+  /// 模式选择：四项共享 Agent 预设选择器。
   Future<void> _pickMode() async {
-    await showDshSheet<void>(
+    final picked = await showAgentModeSheet(
       context,
-      builder: (sheetContext) => SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const DshSheetTitle(title: '会话模式'),
-            for (final mode in TaskMode.values)
-              ListTile(
-                title: Text(mode.label),
-                subtitle: Text(
-                  mode.description,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: mode == _mode
-                    ? const Icon(Icons.check, size: 20)
-                    : null,
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  setState(() => _mode = mode);
-                },
-              ),
-            const SizedBox(height: DshSpace.x2),
-          ],
-        ),
-      ),
+      currentPresetId: _mode.presetId,
     );
+    if (picked == null || !mounted) return;
+    setState(() => _mode = picked);
   }
 
-  /// 底部输入区：公用 ComposerBar（无页面顶行，工作区/模式走页面胶囊行）。
+  /// 底部输入区：公用 ComposerBar（工作区/模式走页面胶囊行）。
   Widget _buildComposerArea(List<WorkspaceRow> workspaces, String? workspace) {
     final composer = _ensureComposer();
     if (composer == null) return const SizedBox.shrink();
@@ -241,7 +211,6 @@ class _NewTaskPageState extends ConsumerState<NewTaskPage> {
       sources: _sources ??= AttachmentSources(),
       actions: _composerActions(),
       onError: (message) => showDshSnack(context, message),
-      showTopRow: false,
     );
   }
 
@@ -322,10 +291,11 @@ class _NewTaskPageState extends ConsumerState<NewTaskPage> {
             .then(
               (items) => [
                 for (final command in items)
-                  TriggerItem(
-                    title: command.slash,
-                    subtitle: command.description,
-                  ),
+                  if (command.slash != '/plan')
+                    TriggerItem(
+                      title: command.slash,
+                      subtitle: command.description,
+                    ),
               ],
             );
       } catch (_) {
@@ -343,10 +313,15 @@ class _NewTaskPageState extends ConsumerState<NewTaskPage> {
 
   Future<String> _doEnsureSession(DshApi api) async {
     final existing = _createdSessionId;
-    if (existing != null) return existing;
+    if (existing != null) {
+      await _applyMode(api, existing);
+      return existing;
+    }
     final cwd = _effectiveWorkspace(ref.read(workspacesProvider));
     final sessionId = await api.createSession(cwd: cwd);
     _createdSessionId = sessionId;
+    // preset 先落：切换会重挂 Agent 插件，权限/计划命令依赖新组装。
+    await _applyMode(api, sessionId);
     final model = _model;
     if (model != null) {
       final (provider, modelId, effort, _) = model;
@@ -368,6 +343,13 @@ class _NewTaskPageState extends ConsumerState<NewTaskPage> {
       await api.executeCommand(sessionId: sessionId, line: '/plan');
     }
     return sessionId;
+  }
+
+  Future<void> _applyMode(DshApi api, String sessionId) async {
+    final presetId = _mode.presetId;
+    if (_appliedPreset == presetId) return;
+    await api.selectAgentPreset(sessionId: sessionId, presetId: presetId);
+    _appliedPreset = presetId;
   }
 
   /// ComposerPorts.send：建会话 → prompt → 跳转会话详情页。

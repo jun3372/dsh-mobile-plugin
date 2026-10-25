@@ -426,6 +426,17 @@ class DshApi {
     return CommandExecution.fromValue(value);
   }
 
+  /// 切换尚未开始的会话所用的 Agent 预设（descriptor: agentPresets/select）。
+  Future<void> selectAgentPreset({
+    required String sessionId,
+    required String presetId,
+  }) async {
+    await _client.rpc(
+      'agentPresets/select',
+      args: {'agentId': sessionId, 'agentPreset': presetId},
+    );
+  }
+
   /// 技能目录，供 `/` 菜单的技能分组。
   Future<List<SkillEntry>> skills({required String sessionId}) async {
     final value = await _client.rpc(

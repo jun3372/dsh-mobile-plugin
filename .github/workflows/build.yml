@@ -43,7 +43,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
       - name: Install Android SDK components
         run: |
           sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
@@ -84,7 +83,7 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          flutter build ios --release --no-codesign \
+          flutter build ios --release --no-codesign --no-tree-shake-icons \
             --build-name "${{ env.APP_VERSION }}" --build-number "${{ github.run_number }}"
       - name: Package unsigned IPA
         working-directory: app
@@ -126,6 +125,13 @@ jobs:
             https://atomgit.com/CPF-Flutter/flutter_flutter.git "$HOME/flutter-ohos"
           echo "$HOME/flutter-ohos/bin" >> "$GITHUB_PATH"
           echo "FLUTTER_STORAGE_BASE_URL=https://flutter-ohos.obs.cn-south-1.myhuaweicloud.com" >> "$GITHUB_ENV"
+      - name: Patch flutter_cache (Huawei mirror lacks upstream engine artifacts)
+        run: |
+          F="$HOME/flutter-ohos/packages/flutter_tools/lib/src/flutter_cache.dart"
+          sed -i 's|^    registerArtifact(FlutterEngineStamp(this, logger));|    // registerArtifact(FlutterEngineStamp(this, logger));|' "$F"
+          sed -i '/for (final String artifactName in IosUsbArtifacts.artifactNames) {/,/registerArtifact(FontSubsetArtifacts(this, platform: platform));/s|^|// |' "$F"
+          sed -i "s|const <String>\['sky_engine', 'flutter_gpu'\]|const <String>['sky_engine']|" "$F"
+          grep -c "// registerArtifact(FlutterEngineStamp" "$F"
       - name: Cache flutter-ohos artifacts
         uses: actions/cache@v4
         with:
@@ -142,7 +148,7 @@ jobs:
         run: |
           flutter pub get
           sed -i '/"signingConfig": "default",/d' ohos/build-profile.json5
-          flutter build hap --release --no-codesign \
+          flutter build hap --release --no-codesign --no-tree-shake-icons \
             --build-name "${{ env.APP_VERSION }}" --build-number "${{ github.run_number }}"
       - id: signing-secrets
         name: Check signing secrets

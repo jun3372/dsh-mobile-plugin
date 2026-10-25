@@ -23,6 +23,15 @@ Future<String> writeFixture(String name, List<int> bytes) async {
   return file.path;
 }
 
+/// 真实文件读取 + MockClient 不受 pumpEventQueue 约束，轮询到条件成立。
+Future<void> _waitUntil(bool Function() condition) async {
+  for (var i = 0; i < 200; i++) {
+    if (condition()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  throw StateError('条件未满足');
+}
+
 final _pngBytes = base64Decode(_pngBase64);
 final _gifBytes = Uint8List.fromList([
   0x47,
@@ -369,7 +378,7 @@ void main() {
       expect(store.sendBlocker, '正在创建会话，请稍候…');
 
       store.attachSession('s9');
-      await pumpEventQueue();
+      await _waitUntil(() => !store.hasUploading);
       expect(store.hasSession, isTrue);
       expect(store.sendBlocker, isNull);
       expect(seen, hasLength(1));

@@ -157,11 +157,10 @@ void main() {
   });
 
   group('占位文案', () {
-    test('就绪态带工作区名，且不再出现「按住说话」', () {
+    test('就绪态使用统一默认文案', () {
       final h = _Harness();
-      expect(h.controller.placeholderState, ComposerPlaceholderState.workspace);
-      expect(h.controller.placeholderText, contains('demo'));
-      expect(h.controller.placeholderText, isNot(contains('说话')));
+      expect(h.controller.placeholderState, ComposerPlaceholderState.ready);
+      expect(h.controller.placeholderText, '发消息或创建任务, / 调用指令, @ 文件或对话');
     });
 
     test('无工作区时回落到通用文案', () {

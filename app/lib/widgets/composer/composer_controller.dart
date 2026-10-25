@@ -26,7 +26,6 @@ import 'trigger_sources.dart';
 /// 占位文案的状态优先级（与 Web 的 input placeholder 分支一致）。
 enum ComposerPlaceholderState {
   ready,
-  workspace,
   plan,
   steerQueue,
   parentOffline,
@@ -208,24 +207,16 @@ class ComposerController extends ChangeNotifier {
     if (environment.offline) return ComposerPlaceholderState.parentOffline;
     if (environment.planMode) return ComposerPlaceholderState.plan;
     if (showSteerAll) return ComposerPlaceholderState.steerQueue;
-    if (environment.workspaceName != null &&
-        environment.workspaceName!.isNotEmpty) {
-      return ComposerPlaceholderState.workspace;
-    }
     return ComposerPlaceholderState.ready;
   }
 
   String get placeholderText {
-    final workspace = environment.workspaceName;
     return switch (placeholderState) {
       ComposerPlaceholderState.unavailable => '正在恢复会话…',
       ComposerPlaceholderState.parentOffline => '连接已断开，重连后可继续发送',
       ComposerPlaceholderState.plan => '规划模式：描述目标或提出问题',
       ComposerPlaceholderState.steerQueue => '输入补充说明，发送后进入消息队列',
-      ComposerPlaceholderState.workspace =>
-        // 带工作区名时不再塞触发符提示，避免占位文案换行撑高输入卡。
-        '在 ${(workspace ?? '').split('/').last} 中描述任务',
-      ComposerPlaceholderState.ready => '描述你的任务 · / 指令 · @ 引用文件',
+      ComposerPlaceholderState.ready => '发消息或创建任务, / 调用指令, @ 文件或对话',
     };
   }
 

@@ -105,6 +105,8 @@ class _WorkspaceFilesPageState extends ConsumerState<WorkspaceFilesPage> {
               onBack: () => Navigator.of(context).pop(),
               action: CircleButton(
                 icon: Icons.refresh_rounded,
+                iconSize: DshIcon.header,
+                size: DshHeaderMetrics.button,
                 tooltip: '刷新',
                 onTap: _loading ? null : _load,
               ),

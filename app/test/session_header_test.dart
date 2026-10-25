@@ -1,5 +1,6 @@
 import 'package:dsh_mobile/app/theme.dart';
 import 'package:dsh_mobile/features/sessions/widgets/session_header.dart';
+import 'package:dsh_mobile/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -31,6 +32,25 @@ void main() {
     expect(find.text('zhoujundeMacBook-Air.local'), findsOneWidget);
     expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
     expect(find.byIcon(Icons.computer_outlined), findsOneWidget);
+    // 标题栏左右图标统一用 header 尺寸。
+    Icon iconOf(IconData data) => tester.widget<Icon>(find.byIcon(data));
+    expect(iconOf(Icons.arrow_back_ios_new_rounded).size, DshIcon.header);
+    expect(iconOf(Icons.folder_outlined).size, DshIcon.header);
+    expect(iconOf(Icons.more_horiz).size, DshIcon.header);
+    // 圆形背景同步收紧到 36，标题栏不再留 44 的大白圈。
+    expect(
+      tester.getSize(find.byType(CircleButton)),
+      const Size(DshHeaderMetrics.button, DshHeaderMetrics.button),
+    );
+    expect(
+      tester.getSize(
+        find.ancestor(
+          of: find.byIcon(Icons.folder_outlined),
+          matching: find.byType(InkWell),
+        ),
+      ),
+      const Size(DshHeaderMetrics.button, DshHeaderMetrics.button),
+    );
 
     await tester.tap(find.byIcon(Icons.folder_outlined));
     await tester.pump();

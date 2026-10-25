@@ -82,6 +82,8 @@ class _NewTaskPageState extends ConsumerState<NewTaskPage> {
               padding: const EdgeInsets.all(DshSpace.x3),
               child: CircleButton(
                 icon: Icons.arrow_back_ios_new_rounded,
+                iconSize: DshIcon.header,
+                size: DshHeaderMetrics.button,
                 tooltip: '返回',
                 onTap: () => Navigator.of(context).pop(),
               ),

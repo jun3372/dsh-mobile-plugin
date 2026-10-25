@@ -40,6 +40,8 @@ class SessionHeader extends StatelessWidget {
         children: [
           CircleButton(
             icon: Icons.arrow_back_ios_new_rounded,
+            iconSize: DshIcon.header,
+            size: DshHeaderMetrics.button,
             tooltip: '返回',
             onTap: onBack,
           ),
@@ -172,10 +174,10 @@ class _PillIconButton extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: SizedBox(
-          width: DshTouch.minTarget,
-          height: DshTouch.minTarget,
+          width: DshHeaderMetrics.button,
+          height: DshHeaderMetrics.button,
           child: Center(
-            child: Icon(icon, size: DshIcon.action, color: p.foreground),
+            child: Icon(icon, size: DshIcon.header, color: p.foreground),
           ),
         ),
       ),

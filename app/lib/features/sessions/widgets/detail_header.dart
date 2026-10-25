@@ -31,6 +31,8 @@ class DetailHeader extends StatelessWidget {
         children: [
           CircleButton(
             icon: Icons.arrow_back_ios_new_rounded,
+            iconSize: DshIcon.header,
+            size: DshHeaderMetrics.button,
             tooltip: '返回',
             onTap: onBack,
           ),

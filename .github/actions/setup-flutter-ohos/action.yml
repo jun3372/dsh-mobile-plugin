@@ -1,0 +1,42 @@
+name: Setup flutter-ohos SDK
+description: 克隆 CPF-Flutter 的 flutter-ohos SDK 并缓存引擎产物
+
+# App 依赖 mobile_scanner / flutter_local_notifications 的鸿蒙移植版（代码中引用
+# TargetPlatform.ohos），只有该 fork 能编译，三端构建都必须用它而非官方 Flutter。
+inputs:
+  version:
+    description: flutter_flutter 仓库的 tag
+    required: true
+  platform:
+    description: 缓存键后缀，标识本 job 预热的目标平台
+    required: true
+  enable-ohos:
+    description: 是否启用鸿蒙平台支持；构建 Android/iOS 时必须关闭
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Clone flutter-ohos SDK
+      shell: bash
+      run: |
+        git clone --depth 1 --branch "${{ inputs.version }}" \
+          https://atomgit.com/CPF-Flutter/flutter_flutter.git "$HOME/flutter-ohos"
+        echo "$HOME/flutter-ohos/bin" >> "$GITHUB_PATH"
+    - name: Restore flutter-ohos artifacts
+      uses: actions/cache@v4
+      with:
+        path: ~/flutter-ohos/bin/cache
+        key: flutter-ohos-${{ inputs.version }}-${{ runner.os }}-${{ inputs.platform }}
+    - name: Configure flutter-ohos
+      shell: bash
+      env:
+        ENABLE_OHOS: ${{ inputs.enable-ohos }}
+      run: |
+        flutter config --no-analytics
+        # 工程内存在 app/ohos/ 时，flutter build ios/apk 也会执行鸿蒙侧准备并要求
+        # HOS_SDK_HOME；非鸿蒙 job 关闭该特性即可跳过。
+        if [ "$ENABLE_OHOS" = "false" ]; then
+          flutter config --no-enable-ohos
+        fi
+        flutter --version

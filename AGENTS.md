@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-**DSH Mobile 手机连接插件**（`dsh-mobile-plugin`，当前 `0.1.0-dev.x`）：为 DSH Web 宿主（`dsh web`，基于 `@deepseek-ai/cordis` 框架）提供手机远程访问网关，包括局域网直连、Cloudflare Tunnel、frpc 隧道、扫码配对、开机自动恢复。
+**DSH Mobile 手机连接插件**（`dsh-mobile-plugin`，当前 `1.0.0`）：为 DSH Web 宿主（`dsh web`，基于 `@deepseek-ai/cordis` 框架）提供手机远程访问网关，包括局域网直连、Cloudflare Tunnel、frpc 隧道、扫码配对、开机自动恢复。
 
 - 纯 JavaScript（ESM），Node ≥ 22，**零 runtime 依赖**（`@deepseek-ai/cordis` 为可选 peerDependency）
 - `app/` 为配套 Flutter 客户端（Android / iOS / HarmonyOS NEXT，Dart SDK ^3.11.5）

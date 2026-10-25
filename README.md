@@ -1,193 +1,192 @@
-> **v0.1.0-dev.17 差分测试更新：** 修复 DSH 业务 `?token=` 参数误拦截以及 WebSocket 非 101 错误响应丢失，增加原生 DSH 与网关逐接口双端差分工具。详见 [`docs/DIFFERENTIAL_PARITY_V17.md`](docs/DIFFERENTIAL_PARITY_V17.md)。真实 DSH 全接口尚未验收。
+# DSH Mobile 手机连接插件
 
-# DSH Mobile 手机连接插件 0.1.0-dev.15
+[![Build](https://github.com/jun3372/dsh-mobile-plugin/actions/workflows/build.yml/badge.svg)](https://github.com/jun3372/dsh-mobile-plugin/actions/workflows/build.yml)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-服务端开发预览版本，尚未在使用者的真实 DSH Web 实例上验收；**不建议公网用于生产环境**。Flutter App 后续开发。本版在不改变网络协议和持久化数据结构的前提下，将共用端口和访问安全设置集中到「基础配置」，三个网络页面只保留各自的连接与隧道选项。
+为 DSH Web 宿主（`dsh web`，基于 `@deepseek-ai/cordis`）提供手机远程访问网关的插件，配套 Flutter 客户端（Android / iOS / HarmonyOS NEXT）。
 
+> **开发预览版**：尚未在大规模真实环境中验收，**不建议公网用于生产环境**。插件为纯 JavaScript（ESM）、Node ≥ 22、零 runtime 依赖；App 为 Flutter（Dart SDK ^3.11.5）。
 
+## 功能特性
 
-## dev.15 — 只允许通过代理端口的严格接口验收
+**插件（服务端）**
 
-针对“DSH 原生 3080 正常不能掩盖插件代理失败”的要求，已修正绝对重定向指向原生 DSH 端口可能导致的绕行；合法 Host 重定向改为相对路径，不可信本机端口重定向返回 502。HTTP / WebSocket Upgrade 代理响应增加 `X-DSH-Mobile-Gateway` 标记供路由测试确认（非认证凭证）。修复旧冒烟脚本把 404 误算成功的问题，改为严格断言状态、来源、响应类型、内容与 WebSocket 握手。新增失败对照测试、完整接口清单审计器 `scripts/audit-gateway-only.mjs`；**清单缺失或接口失败均不得报告全接口验收通过**。详见 [`docs/INTEGRATION_AUDIT_V15.md`](docs/INTEGRATION_AUDIT_V15.md)。
+- 单一移动代理网关，默认 `0.0.0.0:39081`，HTTP / WebSocket 共用端口
+- 三种访问通道：局域网直连、Cloudflare Tunnel（快速 / 命名）、frpc 隧道
+- frpc / cloudflared 未安装时自动从官方 GitHub Release 下载并做 SHA-256 校验
+- 扫码配对：二维码为短 URL（含访问密码），App 扫码即连
+- DSH 重启后自动恢复已启用的网络，失败按退避策略自动重试
+- 中文运行日志（Cordis logger + stderr 双通道，Web 配置页可视化展示）
 
-**当前结论：真实 DSH Host 尚未成功安装和运行（本容器 npm DNS EAI_AGAIN），因此无法确认实际 DSH 所有接口已通。测试用例数绝不等于完整接口覆盖数。**
+**App（客户端）**
 
-## dev.13：配置菜单重新组织（历史版本）
+- 扫码 / 手动绑定多个 DSH 服务端，连接状态管理
+- 任务列表：新建、搜索、归档管理
+- 会话详情：流式消息、工具调用、审批与多题问答、计划详情、排队消息
+- 工作区文件浏览与预览、代码语法高亮
+- 会话草稿与附件、模型选择、深浅色主题
 
-详细字段清单：[`docs/CONFIGURATION_V13.md`](docs/CONFIGURATION_V13.md)。
+## 架构
 
-左侧五个菜单依次为 **基础配置 / 局域网 / Cloudflare隧道 / frpc隧道 / 运行日志**。
+```
+┌──────────┐  局域网 / Cloudflare Tunnel / frpc   ┌─────────────────┐      ┌──────────┐
+│ Flutter  │ ───────── HTTP / WebSocket ────────▶ │  移动代理网关    │ ───▶ │ DSH Host │
+│   App    │        （共用端口 39081）             │  dsh-mobile     │      │ 3080     │
+└──────────┘                                      └─────────────────┘      └──────────┘
+        ▲  扫码配对：二维码含连接地址与访问密码
+```
+
+- 三种通道共用同一 TCP 端口、HTTP API 与 WebSocket 转发，无需开放额外端口
+- 网关通过 TCP 来源识别连接：Cloudflare / frpc 流量必须经本机回环进入才能使用公网密码，**完全不信任** `X-Forwarded-For`、`CF-Connecting-IP` 等可伪造头
+- 局域网密码独立，Cloudflare 与 frpc 共用公网密码；改密即时撤销对应入口旧凭证
+
+## 快速开始
+
+### 1. 安装插件
+
+```bash
+# 在插件源码目录打包
+npm run pack:local    # 生成 dsh-mobile-plugin-1.0.0.tgz
+
+# 安装到 DSH Web 宿主
+dsh plugin --profile web add ./dsh-mobile-plugin-1.0.0.tgz
+dsh web
+```
+
+也可从 [GitHub Releases](https://github.com/jun3372/dsh-mobile-plugin/releases) 直接下载 `.tgz`。
+
+配置持久化于 `$DSH_HOME/dsh-mobile-plugin/settings.json`（无 `DSH_HOME` 时为 `~/.dsh`）。旧版 `schema:1` 配置会在首次加载时自动迁移为 `schema:2`，已有密码、隧道 Token、开关状态均保留。
+
+### 2. 安装 App
+
+从 [Releases](https://github.com/jun3372/dsh-mobile-plugin/releases) 下载对应平台产物：
+
+| 文件 | 平台 | 说明 |
+| --- | --- | --- |
+| `DSH-Mobile-1.0.0-android.apk` | Android | 直接安装 |
+| `DSH-Mobile-1.0.0-ios-unsigned.ipa` | iOS | **未签名**，需用 Xcode / AltStore 等重签后侧载 |
+| `DSH-Mobile-1.0.0-harmonyos-unsigned.hap` | HarmonyOS | **未签名**，需用 `hap-sign-tool` 签名后 `hdc install`（配置签名 Secrets 的 CI 会直接产出 `-signed.hap`） |
+| `dsh-mobile-plugin-1.0.0.tgz` | 插件 | 安装到 DSH Web 宿主 |
+
+### 3. 扫码连接
+
+1. 在 DSH Web 左下角账号行末尾点击手机图标，打开配置弹窗
+2. 在「局域网」「Cloudflare隧道」或「frpc隧道」页面找到二维码
+3. App 首页扫码绑定即可；App 侧也可手动输入地址与密码
+
+二维码格式：`<连接地址>?token=<URL 编码后的访问密码>`，例如 `http://192.168.1.50:39081?token=YourPassword`。**二维码包含完整访问密码，请按凭证保护，勿公开分享。**
+
+## 配置说明
+
+DSH Web 手机图标弹窗内五个菜单：
 
 | 菜单 | 管理内容 |
 | --- | --- |
 | **基础配置** | 共享代理端口（默认 39081）、网关运行状态、局域网访问密码、Cloudflare/frpc 共用公网密码、DSH 实例标识（只读） |
-| **局域网** | 独立启停、可用 IP 下拉选择、对应连接地址与二维码 |
-| **Cloudflare隧道** | 独立启停、快速/命名隧道、域名、Tunnel Token、cloudflared 路径、专属 GitHub 下载来源、二维码 |
-| **frpc隧道** | 独立启停、frps 地址/控制端口/公网映射端口、Token、映射名称、手机访问地址、frpc 路径、专属 GitHub 下载来源、二维码 |
-| **运行日志** | 统一展示并复制局域网、Cloudflare、frpc 和网关的中文运行记录 |
+| **局域网** | 独立启停、可用 IP 下拉选择、连接地址与二维码 |
+| **Cloudflare隧道** | 独立启停、快速/命名隧道、域名、Tunnel Token、cloudflared 路径、GitHub 下载加速源、二维码 |
+| **frpc隧道** | 独立启停、frps 地址/控制端口/公网映射端口、Token、映射名称、frpc 路径、下载加速源、二维码 |
+| **运行日志** | 集中展示并复制局域网、Cloudflare、frpc 和网关的中文运行记录 |
 
-**行为与兼容性：** 「基础配置」使用一次管理 API 请求验证并保存共享端口与两组密码，三者不会在校验错误时部分写入。更换端口会重启共享网关及已启用隧道；更换密码会撤销对应入口的旧认证凭证。**只打开/保存页面不会重新生成或修改随机密码**。旧版 `settings.json`、密码、隧道 Token、IP 选择及开关状态均原样保留，无需数据迁移。独立网络菜单的配置操作也不会覆盖共享端口和密码。
+- 更换端口会重启共享网关及已启用隧道；更换密码会撤销对应入口旧认证；只打开/保存页面不会轮换随机密码
+- 首选端口被占用时网关自动顺延到下一个可用端口（最多 +20），配置中的首选端口保持不变，二维码与连接地址使用实际生效端口
+- 每条隧道可单独选择下载加速源（官方 GitHub / ghfast.top / ghproxy.net / 自定义 HTTPS 地址），仅自动下载客户端时生效
+- 字段全貌见 [`docs/CONFIGURATION_V13.md`](docs/CONFIGURATION_V13.md)；frps 服务端部署见 [`docs/FRPC_USAGE.md`](docs/FRPC_USAGE.md)
 
-**安全提示：** 两种访问密码仍在本机受权限保护的设置文件中可恢复存储（沿用前版设计）。局域网 HTTP 未提供传输加密，不建议在不可信网络使用；公网启用前应确认 HTTPS/WSS 和隧道访问策略。
+## 构建与 CI
 
+GitHub Actions 工作流 [`.github/workflows/build.yml`](.github/workflows/build.yml)：
 
-## dev.12：统一访问密码、GitHub 下载加速源
+| Job | Runner | 产物 | 触发 |
+| --- | --- | --- | --- |
+| `plugin` | ubuntu | `dsh-mobile-plugin-*.tgz` | PR / push / tag |
+| `android` | ubuntu（flutter-ohos 3.41.9+ohos-1.0.2） | `DSH-Mobile-*-android.apk` | PR / push / tag |
+| `ios` | macos（flutter-ohos 3.41.9+ohos-1.0.2） | `DSH-Mobile-*-ios-unsigned.ipa` | PR / push / tag |
+| `harmonyos` | ubuntu（flutter-ohos 3.41.9+ohos-1.0.2 + DevEco CLI 26.0.0.821） | `DSH-Mobile-*-harmonyos-*.hap` | PR / push / tag |
+| `release` | ubuntu | 汇总上述产物发布 GitHub Release | 仅 `v*` tag |
 
-- **统一密码区域**：「局域网」「Cloudflare隧道」「frpc隧道」都只保留一个「访问密码」输入项及「显示/隐藏」「复制密码」操作。可直接修改该输入项并点击「保存并应用」：新密码会保存为固定密码（8–64 位）；未修改则不会轮换现有的随机/固定密码。**局域网密码独立，Cloudflare 与 frpc 共用公网密码。** 不再显示密码方式下拉框、随机重置按钮等多余控件。原有后台密码格式和现存凭证继续兼容；**dev.16 已将二维码从 JSON 改为短 URL**，旧版仅支持 JSON 扫码协议的客户端需要适配 URL 解析。只有主动修改密码才会撤销旧认证。
-- **下载来源（每个隧道单独配置）**：Cloudflare 和 frpc 的「高级设置」均增加下拉选择「GitHub 官方（默认）」「国内加速 · ghfast.top」「国内加速 · ghproxy.net」「自定义 HTTPS 加速地址」。只有选择自定义时才显示 URL 输入框；格式为 `https://mirror.example.com/`，代理规则将完整官方 GitHub Release URL 追加到后面。两种隧道可以选择不同下载来源。
-- **查找与安装逻辑**：若已经配置本地可执行程序、插件私有 bin 里已存在、或 PATH 可以找到，就直接复用，不走加速源。只有需要自动下载安装客户端时才使用所选地址；Cloudflare 仍校验代码内固定的官方 SHA-256；frpc 仍校验对应 Release SHA-256 清单（注意如果清单与文件都来自同一第三方镜像，则校验本身不能防范恶意镜像替换两者，需信任镜像服务提供方）。下载仍限制 HTTPS、文件尺寸与跳转目标，不执行下载脚本。
-- **配置迁移**：旧版设置自动补充 `downloadSource: "official"`、`downloadMirror: ""`；不改动用户已有密码、监听端口、隧道启停或 frps Token。
-- **安全建议**：国内加速源属于第三方服务，可用性可能变化；优先官方 GitHub，只有需要时手动选择镜像。自定义加速源由管理员自行负责信任和维护。镜像无法使用时可改回官方、换镜像或手动指定已安装程序路径。
+三端 App 统一使用 [CPF-Flutter 的 flutter-ohos SDK](https://atomgit.com/CPF-Flutter/flutter_flutter)（复合动作
+[`.github/actions/setup-flutter-ohos`](.github/actions/setup-flutter-ohos/action.yml)）：`mobile_scanner`、
+`flutter_local_notifications` 的鸿蒙移植版在 Dart 层引用 `TargetPlatform.ohos`，官方 Flutter 无法编译。
 
-## frpc 自动下载安装（dev.11 新增）
+**HarmonyOS 可选签名 Secrets**（全部配置后 CI 直接产出已签名 HAP）：
 
-- **未找到 frpc 时自动安装**：按高级设置指定路径、`DSH_MOBILE_FRPC` 环境变量、插件私有目录、系统 PATH 的顺序查找。没有指定路径且没有可用程序时，从 [fatedier/frp 官方 GitHub Releases](https://github.com/fatedier/frp/releases) 下载固定版本 **v0.71.1**。首次需要网络，后续重启直接复用已有的 frpc。
-- **系统/架构适配**：Windows x64、ARM64 使用官方 ZIP；macOS x64、ARM64，以及 Linux x64、ARM64、ARM 使用官方 tar.gz。其他系统提示手动安装并配置路径。
-- **完整性校验**：下载官方 `frp_sha256_checksums.txt`，核对压缩包 SHA-256，校验通过后才提取 `frpc`/`frpc.exe` 到 `$DSH_HOME/dsh-mobile-plugin/bin/`。采用大小限制与 HTTPS 重定向域名白名单，不执行下载脚本，不解压多余文件。
-- **运行日志**：显示自动下载开始、完成、校验和安装成功；无法连接 GitHub、下载失败、压缩包校验失败等都显示中文错误，可手动填入可执行文件绝对路径作为回退。日志不会包含 frps Token。
-- **frps 服务器仍需用户自行部署**；自动下载的只是 DSH 设备上的 `frpc` 客户端，公网 TCP 映射、frps Token 和 HTTPS/WSS 必须按 frp 隧道配置页面说明设置。
-- **验证范围**：已用离线模拟 GitHub Release 包测试 Windows ZIP、Linux/macOS tar.gz、SHA-256 校验、错误回退与本地缓存；未在用户真实设备上进行完整 GitHub 下载或 frps 公网联调。
+| Secret | 内容 |
+| --- | --- |
+| `OHOS_KEYSTORE_BASE64` | `.p12` 密钥库（base64） |
+| `OHOS_CERT_BASE64` | `.cer` 应用证书（base64） |
+| `OHOS_PROFILE_BASE64` | `.p7b` Profile 文件（base64） |
+| `OHOS_KEY_ALIAS` | 密钥别名 |
+| `OHOS_KEY_PASSWORD` / `OHOS_STORE_PASSWORD` | 密钥密码 / 密钥库密码（**明文**） |
 
-## 配置弹窗固定高度（dev.9 新增）
+**本地构建**：
 
-- **高度不再受当前菜单内容影响**：局域网、Cloudflare 隧道与运行日志现在五个页面共享相同的弹窗外框高度；切换菜单仅替换右侧内容，不调整外框。
-- **桌面端**：弹窗高度 `min(760px, 视口高度 - 52px)`，同时限制最大高度，页面内容较长时只在右侧区域纵向滚动。
-- **窄屏端（宽度不超过 760px）**：弹窗高度 `min(760px, 视口高度 - 20px)`，避免超出屏幕。支持动态视口单位（dvh）与传统 vh 兼容回退。
-- **顶部状态和菜单不受影响**：标题及三网络运行状态固定在上方，左侧菜单保持独立；窗口高度变化时右侧滚动区自适应，日志框保留可拖动高度与记忆功能。
-- 仅修改 Web UI 样式、测试与文档，不涉及插件网络代理、密码、Cloudflare 或服务端 API。
+```bash
+# 插件（Node >= 22）
+npm run check          # 逐文件语法检查
+npm test               # node:test 单测
+npm run pack:local     # 打 tgz
 
-## 独立运行日志菜单（dev.8 新增）
+# App（Flutter，在 app/ 目录下）
+flutter pub get
+flutter build apk --release                    # Android
+flutter build ios --release --no-codesign      # iOS（未签名）
+flutter build hap --release                    # 鸿蒙（需 flutter-ohos SDK + DevEco CLI）
 
-- 左侧菜单增加第三项「运行日志」，保持与「局域网」「Cloudflare隧道」相同的单行纯文字菜单、选中高亮和高度。
-- **日志面板迁移**：从局域网和 Cloudflare 隧道的配置页移除「最近运行日志」板块；新「运行日志」页集中显示来自插件、局域网网关、Cloudflare 与 frpc 隧道的最新运行记录。
-- 日志时间、级别、内容列与「复制日志」操作保留。日志框默认更高，仍可向下拖动调整；离开页面再返回时会记住调整的高度与滚动位置。
-- 打开日志页时状态轮询每 6 秒更新已有日志节点，不重建页面，不打断滚动。顶部局域网与 Cloudflare 的实时运行状态仍保留。
-- **仅前端结构调整**：后台日志存储、最近 30 条显示范围、认证和网络接口不变。
-
-## 表单控件与左侧菜单微调（dev.7）
-
-- **控件高度统一**：所有单行文本、数字输入框与下拉框共享 `--mobile-control-height:40px`，将下拉框原先独立的 43px 高度调整为同其他输入框一致的 40px，并对齐边框圆角、内边距和文字垂直位置。
-- **简化左侧菜单**：移除菜单名称下的「运行中／已连接／读取中」状态文字和轮询更新逻辑，菜单保持「局域网」「Cloudflare隧道」「运行日志」三个纯文字入口；标题栏顶部的三类网络实时运行状态继续保留。
-- **菜单项尺寸**：桌面端统一 46px，高度较窄的窗口统一 44px，选中高亮及可访问点击区域保持不变。
-- **历史说明（dev.7）**：当时共享端口、二维码、密码、自动启动及状态轮询沿用 dev.6 的行为；**dev.16 的二维码格式现已调整为 URL**。
-
-## 交互流畅度与下拉框优化（dev.6）
-
-- **菜单文案**：左侧第二项由「公网访问」改为「Cloudflare隧道」，保留原来的配置功能；运行状态仅在顶部标题栏显示。
-- **下拉框美化**：局域网 IP、隧道方式和下载来源共用统一的原生下拉框样式，增加聚焦描边、悬停反馈、下拉箭头和文本省略；仍使用系统原生选择面板，以兼顾键盘操作、可访问性与渲染效率。系统弹出的选项菜单外观由操作系统/浏览器控制。
-- **消除轮询重建**：状态轮询不再清空重建整个配置页面，改为原位更新运行状态、连接地址与有变化的日志；输入的未保存内容、滚动位置、展开的高级设置和调整过的日志框高度不受轮询影响。
-- **二维码缓存**：连接 URL 和访问密码均未变化时不会重复生成二维码；地址变化或改密均会重新生成，缓存大小有上限。
-- **菜单滚动**：记住每个菜单最近的滚动位置，切换时恢复；重复点击当前菜单不重新渲染。
-- **宿主 DOM 监听**：只有账号入口缺失/被替换时才扫描挂载目标，缺失时限制扫描频率；不再因为弹窗的正常日志与状态更新不断扫描整个页面。
-- **浏览器交互测试**：补充可选 Playwright 冒烟测试，验证实际浏览器中的菜单切换、轮询、未保存输入保留、日志更新与二维码去重。可执行 `python test/ui-browser-smoke.py`（需要本地 Chromium 和 Playwright）。
-
-## 配置界面优化（dev.5 起）
-
-- **左侧纯文字菜单**：移除原菜单中的网络 Emoji 和状态图标，保留「局域网 / Cloudflare隧道 / 运行日志」三个菜单名称，仅以选中高亮区分，不重复显示运行状态。
-- **开关样式**：启用组件改为具有键盘焦点样式的滑动开关，默认只在点击「保存并应用」后修改持久化启用状态。保留 DSH 重启时自动恢复用户已启用网络的规则。
-- **布局美化**：更宽的弹窗、轻量背景和统一圆角，对网络页面的「连接信息」「访问与密码」以及独立「运行日志」页面进行分组，改进窄屏展示。
-- **局域网多个 IP**：检测到多个可用 IPv4 时提供下拉框，**仅展示当前选中 IP 的连接二维码**；选择后可即时预览，点击「保存并应用」保存首选 IP。下次进入仍选中该 IP；如果网卡 IP 后续失效，则临时回退到另一可用 IP，避免继续显示不可用二维码。网关仍监听共享端口，IP 选择控制二维码显示地址而非绑定网卡。
-- **运行日志面板**：dev.8 已移动到独立「运行日志」菜单页，默认使用较大显示高度并支持拖动调整；时间/级别/内容三列展示最近 30 条，支持复制日志。服务端日志与密码保护不变。
-- **Cloudflare 临时地址**：`*.trycloudflare.com` 无法在重新创建 Quick Tunnel 后固定；重启 DSH 时可能重新申请地址。本插件不会将过期临时域名伪装成有效地址。要求固定域名时，请配置自己的 Cloudflare 命名隧道。官方说明：https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/
-
-## 自动启动与运行状态（dev.4 起）
-
-- **首次安装**：默认启用局域网与 Cloudflare 快速隧道，两者共用代理端口 `39081`。DSH Web 插件启动时会自动初始化网关和隧道。公网默认开启属于用户本次指定行为；请注意这是一个可远程执行 DSH 能力的高权限入口。
-- **以后每次重启 DSH**：从 `$DSH_HOME/dsh-mobile-plugin/settings.json` 读取上次保存的 `enabled` 状态，**自动恢复仍处于启用状态**的局域网和公网。关闭某个入口并保存后，下次启动维持关闭；不强制覆盖手动关闭选择。
-- **自动重试**：网关端口临时不可用、Cloudflare 进程异常或网络临时中断时，插件写入运行日志并按退避策略重试（最多每 60 秒一次）。如果缺少 `cloudflared`，会使用原有查找和自动下载策略；仍然不能运行时，公网标记为异常/重试，不会伪报在线。
-- **状态显示**：弹窗顶部同时展示「内网」与「公网」状态；左侧菜单仅显示名称并使用选中高亮；当前网络卡片也会高亮。绿色表示实际运行，黄色表示连接/重试中，红色表示错误，灰色表示关闭；**已启用不等于已经连通**。
-- **日志**：关键启动、加载配置、端口监听、隧道连接/退出、重试、配置变更、停用、错误均通过 Cordis `ctx.logger('dsh-mobile')` 输出，同时向 **stderr** 写入中文运行日志，供 `dsh web` 运行终端或进程管理器采集。配置弹窗还展示最近 30 条日志，服务端仅保存最近 60 条（管理接口返回最近 30 条）。日志不会写出密码、Cloudflare Token、签名私钥和移动登录令牌。
-- **旧版本升级**：保留已保存的开关状态、随机/固定密码、身份和共享端口，不删除原有 `settings.json`。如果此前手动关闭某个网络，需要在设置页开启一次并保存，之后才会在每次 DSH 重启时自动恢复。
-
-## 连接与认证行为
-
-- 只有 **一个移动代理网关**，默认 `0.0.0.0:39081`，两种访问方式共享 TCP 端口、HTTP API 与 WebSocket 转发。**无需再开放 39082**。
-- 局域网二维码使用 `http://<当前选中的 LAN_IP>:39081?token=<访问密码>`；Cloudflare Quick Tunnel/Named Tunnel 的扫码链接使用实际公网域名和公网密码，并通过隧道到达本机 `127.0.0.1:39081`。端口仅在「基础配置」中修改，修改后会同步影响三个网络入口。**端口占用时状态显示为错误并自动重试**。
-- **仍保留局域网、公网各自独立的访问密码。** 仅接受经本机回环地址进入的 Cloudflare Tunnel 连接作为公网流量；来自其他 IP 的连接按局域网规则处理。完全不信任可伪造的 HTTP Host、CF-Connecting-IP 或 X-Forwarded-For 头来决定认证级别。公网关闭时，只允许已启用的 LAN；LAN 关闭时拒绝远端直连。
-- 配置界面提供当前密码的「显示/隐藏」「复制」；随机密码在首次创建时生成，**保存设置、重启服务以及反复启停公网均不会改变**。只有在「基础配置」中的对应访问密码输入框输入新密码并保存，或管理接口显式轮换时才发生变化。固定密码也可回显。
-- 密码通过本机管理员受保护的 API 回显。**从 dev.16 起，二维码会包含 URL 编码的访问密码；扫码时仅用于登录，不透传到 DSH Host。请勿分享二维码或链接。**
-- 未安装 `cloudflared`：先检查配置的可执行路径、`$DSH_HOME/dsh-mobile-plugin/bin/`、PATH；都找不到才尝试从 **Cloudflare 官方 GitHub Release 2026.10.2** 下载对应系统资产、校验固定 SHA-256 并安装到插件私有 `bin` 目录。仅在用户开启公网时执行下载，绝不下载后未经哈希校验直接运行。无法联网或平台不支持时提示手动设置完整可执行路径，不再仅显示 `spawn cloudflared ENOENT`。
-- 插件自带二维码生成器，**不依赖 `qrcode` npm 包**。HTTP/WebSocket 代理和 `/_dsh_mobile/v1/info` 仍需真实 DSH Host 联调。
-- DSH Web 左下角账号行末尾的手机图标采用试验性的 DOM 兼容挂载，尚未验证实际 DSH 版本。
-
-## 安装/升级
-
-1. 停止 `dsh web`，并备份 `$DSH_HOME/dsh-mobile-plugin/settings.json`。
-2. 使用完整新版源码目录或新版 `.tgz` 包替换以前的插件。切勿将新版和旧版服务端文件混用。
-3. 使用 DSH 对应版本的插件管理命令安装。例如：
-
-   ```bash
-   dsh plugin --profile web add ./dsh-mobile-plugin-0.1.0-dev.15.tgz
-   dsh web
-   ```
-
-4. 在 Web 左下角手机图标打开设置，核对同端口、密码显示、LAN 二维码和公网连接情况。
-
-**旧版配置迁移：** `schema:1` 会在首次载入升级为 `schema:2`，原 `lan.port`（通常 39081）迁移为共享 `gateway.port`，原 `public.port`（39082）将被移除。如果旧随机密码之前只保存哈希而没有原文，新版 **只能在升级时重新生成一次并持久保存**，已配对设备需要用新密码重新登录。旧版固定密码也只有哈希，无法反推出原文：其认证哈希将保持有效；设置页会提示输入一次新的固定密码，后续即可查看。**切勿通过删除 `settings.json` 修复错误，否则实例身份也会改变。**
-
-## cloudflared ENOENT 排查
-
-安装程序使用 TLS 从固定官方 GitHub Releases 版本下载，首次可能需要访问 GitHub，且文件可能有几十 MB。此开发包的测试未执行真正的 Cloudflare 下载，因此 **自动下载逻辑只完成模拟和离线错误测试，未完成真实下载验证**。
-
-如果自动下载失败：
-
-- Windows：`winget install --id Cloudflare.cloudflared`，或 [Cloudflare Releases](https://github.com/cloudflare/cloudflared/releases) 下载 `.exe`，在 Web 公网菜单填写完整可执行路径，例如 `C:\\Program Files\\cloudflared\\cloudflared.exe`（按实际路径）。
-- macOS：`brew install cloudflared`，Linux：根据发行版安装，或从官方 Release 下载合适架构的二进制。
-- 可通过环境变量 `DSH_MOBILE_CLOUDFLARED=/absolute/path/to/cloudflared` 指定路径；优先级低于 Web 内单独填写的路径。
-- 命名隧道的 Public Hostname Service 必须指向 **当前共用端口** `http://127.0.0.1:39081`（如修改端口，随之调整）。
-- 不要配置公网隧道直接指向原始 DSH Web 上游端口（默认 3080），否则会绕过手机密码保护。
+# App 提交前
+dart fix --apply && dart format .
+flutter test
+```
 
 ## 安全边界
 
-- `settings.json` 存储于 `$DSH_HOME/dsh-mobile-plugin/`，POSIX 上权限为 `0600`。由于用户要求**能够回显固定和随机密码**，新版在本机受权限保护的文件中保存 **可恢复的密码原文**，同时保留 scrypt hash 做认证。请保证操作系统账号、备份与目录访问安全，切勿将其纳入版本控制或公开上传；Windows 用户需要检查文件 ACL。Cloudflare Token 与 Ed25519 私钥也保存在本地文件中。
-- LAN 网关目前为普通 HTTP，**内容与密码不能防御局域网嗅探**。仅用于可信 LAN 测试，生产须加 HTTPS/其它安全传输。
-- 共享端口不意味着不同网络一定安全隔离：禁止在路由器上将此端口进行公网端口映射，除非另有网络级访问控制；否则外部可以绕开 Cloudflare 隧道而直连 LAN 认证入口。
-- 移动代理网关不允许转发 `/dsh-mobile/admin/*`，并会去除移动认证令牌后再代理上游。Web 管理 API 仍仅限环回来源与 DSH `connection.requestRejection` 认证。
-- 登录令牌随对应网络密码变更/网络关闭而撤销；两种网络各自使用密码校验。同一个端口通过 TCP 来源识别连接：Cloudflare Tunnel 必须连接本机 127.0.0.1 才能使用公网密码。
+- `settings.json` 权限为 `0600`（POSIX）。因支持密码回显，文件中保存**可恢复的密码原文**（同时保留 scrypt hash 认证）；Cloudflare Token 与 Ed25519 私钥也在本地文件中，请确保操作系统账号与备份安全，切勿纳入版本控制
+- 局域网网关为普通 HTTP，**不能防御局域网嗅探**，仅用于可信网络；公网务必确认 HTTPS/WSS 与隧道访问策略
+- 禁止在路由器上将 39081 端口做公网映射，否则外部可绕过 Cloudflare 隧道直连 LAN 认证入口
+- 移动代理网关不转发 `/dsh-mobile/admin/*`，并在代理前去除移动认证令牌；Web 管理 API 仅限环回来源
+- 登录令牌随对应网络密码变更/网络关闭而撤销；访问密码不会被转发到 DSH Host 的任何接口
 
 ## 协议
 
-扫码 payload：`{"protocol":"dsh-mobile/1","instanceId":"...","publicKey":"...","mode":"lan|public","url":"http(s)://..."}`。
+- 扫码二维码：`<url>?token=<password>`；旧版 JSON payload（`{"protocol":"dsh-mobile/1","instanceId":...,"publicKey":...,"mode":"lan|public","url":...}`）仍可识别
+- `GET /_dsh_mobile/v1/info`：返回签名元信息
+- `POST /_dsh_mobile/v1/login`：`{"password":"..."}` → `{token, expiresIn, instanceId}`
+- 后续请求携带 `Authorization: Bearer <token>`，由网关代理原生 DSH HTTP / WebSocket
 
-`GET /_dsh_mobile/v1/info` 返回签名元信息；`POST /_dsh_mobile/v1/login` 请求 `{"password":"..."}` 返回 `{token,expiresIn,instanceId}`；之后携带 `Authorization: Bearer <token>` 转发原生 DSH HTTP、WS。URL 格式与旧版兼容。
+## 文档索引
 
-## 运行和测试
+| 文档 | 内容 |
+| --- | --- |
+| [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) | DSH 宿主兼容性记录 |
+| [`docs/CONFIGURATION_V13.md`](docs/CONFIGURATION_V13.md) | 设置菜单与字段清单 |
+| [`docs/FRPC_USAGE.md`](docs/FRPC_USAGE.md) | frpc 隧道配置指南 |
+| [`docs/DIFFERENTIAL_PARITY_V17.md`](docs/DIFFERENTIAL_PARITY_V17.md) | 原生 Host / 插件网关差分审计 |
+| [`docs/INTEGRATION_AUDIT_V14.md`](docs/INTEGRATION_AUDIT_V14.md) / [`V15`](docs/INTEGRATION_AUDIT_V15.md) | 集成验收审计记录 |
 
-需要 Node.js >=22、DSH Web Profile、Cordis 4.x。默认 DSH 上游为 `http://127.0.0.1:3080`，可用 `DSH_MOBILE_UPSTREAM` 修改为其他环回 HTTP 地址。
+## 开发
 
-```bash
-npm run check
-npm test
+```
+lib/            插件核心（index/service/gateway/tunnel/cloudflared/frpc/security/settings/qr/client 等）
+app/            Flutter 客户端（lib/features/{servers,tasks,sessions}，ohos/ 为鸿蒙工程）
+test/           node:test 单测 + Playwright 浏览器冒烟（ui-browser-smoke.py）
+scripts/        审计与差分冒烟脚本
+docs/           版本级规范与审计文档
 ```
 
-此包的本地测试使用模拟的 DSH 上游与 Cloudflare Tunnel；已增加重启恢复、失败自动重试、中文日志与运行状态测试，**尚未**在目标机器上完成公网连接/自动下载、DSH Web 头像位置和全接口实机测试。
-
-代码独立实现（MIT）；参考资料：[dsh-pocket](https://github.com/shaobeichen/dsh-pocket)（GPL-2.0，未复用代码）、[Cloudflare cloudflared 官方 Releases](https://github.com/cloudflare/cloudflared/releases)。
-
-## dev.14 — DSH 原生 API 认证兼容修复
-
-已加入 DSH Host 官方浏览器会话的**服务器端内部换取**（`ctx.connection.authenticatedUrl`）。手机仍只需原有访问密码；其登录令牌不等于 DSH Host 会话。DSH Host 会话 Cookie 只在本机代理进程中使用，不展示给手机。修改 DSH 上游 Host 认证规则后，已经建立的移动会话仍受原来的密码/启停约束。
-
-- 运行时自动识别 DSH Web 的实际端口，而不是一律使用 3080；`DSH_MOBILE_UPSTREAM` 环境变量仍可显式覆盖。
-- 基础配置页可以区分“代理网关启动”和“DSH Host 接口认证正常”，避免假阳性。
-- Host Cookie 失效时重新申请，客户端应对首次 401 进行谨慎重试；对可能有副作用的操作**不会自动重放**。
-- 原有局域网、Cloudflare、frpc、统一端口和密码配置不变。二维码格式随后在 dev.16 修改。
-- 本地 `npm test` 87/87；未能联网下载 `@deepseek-ai/dsh`，**不代表真实 DSH 全部接口已通过**。
-
-如需真实联调，安装 Node.js 22.19+ 或 24+、保持 npm 可联网，在解压的源码目录运行：
-
 ```bash
-bash ./scripts/run-live-dsh-smoke.sh
+# 插件
+npm run check && npm test
+python3 test/ui-browser-smoke.py        # 需本地 Chromium + Playwright
+bash ./scripts/run-live-dsh-smoke.sh    # 真实 DSH 隔离联调
+
+# App（在 app/ 下）
+dart fix --apply && dart format . && flutter test
+flutter emulators --launch <AVD> && flutter run   # Android 模拟器实测
 ```
 
-脚本默认隔离运行、关闭两条公网隧道，详见 [`docs/INTEGRATION_AUDIT_V14.md`](docs/INTEGRATION_AUDIT_V14.md)。
+插件调试无热载：改动后需重启 `dsh web` 验证。默认上游为 `http://127.0.0.1:3080`，可用 `DSH_MOBILE_UPSTREAM` 覆盖。
 
-- 已连接的原生 WebSocket 在退出登录或访问令牌失效时会主动关闭，避免远程控制会话继续保留。
+## 许可
 
-
-## dev.16：简短扫码 URL
-
-二维码内容统一为 `<实际连接地址>?token=<URL 编码后的访问密码>`，例如：
-`http://192.168.1.50:39081?token=YourPassword`。局域网使用局域网密码，Cloudflare/frpc 使用公用的公网密码。扫码访问此链接时，网关只在根路径读取并校验密码，通过后签发原有的 HttpOnly 会话 Cookie，返回 `303 Location: /`，浏览器随后访问不带密码的根地址；**原始密码不会被转发到 DSH Host 的任何接口**。原先用于移动端 App 的 `POST /_dsh_mobile/v1/login` 仍可使用。
-
-二维码包含完整访问密码。它可能被拍照、转发、浏览器/隧道访问日志或网络监听获得，因此必须按凭证保护，不要公开分享。公网推荐 HTTPS/WSS；**HTTP 网络上的密码无法防止中间人窃取**。如果受控入口因升级前的旧配置无法恢复密码，请先到「基础配置」重新设置访问密码。改密会让旧二维码失效。
+MIT。参考资料：[dsh-pocket](https://github.com/shaobeichen/dsh-pocket)（GPL-2.0，未复用代码）、[Cloudflare cloudflared](https://github.com/cloudflare/cloudflared/releases)、[CPF-Flutter/flutter_flutter](https://atomgit.com/CPF-Flutter/flutter_flutter)（Flutter 鸿蒙适配）、自带的二维码生成器许可见 [`docs/third-party/`](docs/third-party/)。

@@ -64,7 +64,9 @@ class SessionHeader extends StatelessWidget {
                         title ?? '新任务',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: context.dshText.titleLarge,
+                        style: context.dshText.titleLarge?.copyWith(
+                          fontSize: DshHeaderMetrics.barTitle,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Row(

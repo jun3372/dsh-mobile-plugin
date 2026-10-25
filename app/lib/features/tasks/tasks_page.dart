@@ -59,27 +59,17 @@ class _TasksPageState extends ConsumerState<TasksPage> {
   }
 
   Widget _buildHeader(String serverName, AsyncValue<bool> connection) {
-    final p = context.dsh;
     return Padding(
       padding: DshHeaderMetrics.padding,
       child: Row(
         children: [
-          Container(
+          // 与新建会话页头部一致：使用 DSH 鲸鱼 logo（透明底）替代占位「D」。
+          Image.asset(
+            'assets/icon/logo.png',
             width: DshHeaderMetrics.logo,
             height: DshHeaderMetrics.logo,
-            decoration: BoxDecoration(
-              color: p.foreground,
-              borderRadius: BorderRadius.circular(DshRadius.thumb),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              'D',
-              style: TextStyle(
-                color: p.onForeground,
-                fontSize: DshHeaderMetrics.logoFontSize,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            fit: BoxFit.contain,
+            semanticLabel: 'DSH',
           ),
           const SizedBox(width: DshSpace.x2),
           Expanded(

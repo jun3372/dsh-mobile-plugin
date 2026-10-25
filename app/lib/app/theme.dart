@@ -244,11 +244,11 @@ abstract final class DshHeaderMetrics {
   /// 首页 Logo 方块边长。
   static const double logo = 28.0;
 
-  /// Logo「D」字符字号。
-  static const double logoFontSize = 14.0;
-
   /// displaySmall 页面大标题的局部覆写值（全局字阶仍为 24）。
-  static const double title = 20.0;
+  static const double title = 18.0;
+
+  /// 内页标题栏（会话详情、工作区文件、AppBar 页面）字号。
+  static const double barTitle = 16.0;
 
   /// 标题右侧下拉箭头。
   static const double dropdownIcon = 20.0;
@@ -393,7 +393,9 @@ ThemeData buildDshTheme(Brightness brightness) {
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: false,
-      titleTextStyle: text.titleLarge?.copyWith(fontSize: 18),
+      titleTextStyle: text.titleLarge?.copyWith(
+        fontSize: DshHeaderMetrics.barTitle,
+      ),
       iconTheme: IconThemeData(color: p.foreground, size: DshIcon.nav),
       systemOverlayStyle: _overlayStyle(p, isDark),
     ),

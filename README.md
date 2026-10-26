@@ -1,7 +1,7 @@
 # DSH Mobile 手机连接插件
 
 [![Build](https://github.com/jun3372/dsh-mobile-plugin/actions/workflows/build.yml/badge.svg)](https://github.com/jun3372/dsh-mobile-plugin/actions/workflows/build.yml)
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.0.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 为 DSH Web 宿主（`dsh web`，基于 `@deepseek-ai/cordis`）提供手机远程访问网关的插件，配套 Flutter 客户端（Android / iOS / HarmonyOS NEXT）。
@@ -47,10 +47,10 @@
 
 ```bash
 # 在插件源码目录打包
-npm run pack:local    # 生成 dsh-mobile-plugin-1.0.0.tgz
+npm run pack:local    # 生成 dsh-mobile-plugin-1.0.1.tgz
 
 # 安装到 DSH Web 宿主
-dsh plugin --profile web add ./dsh-mobile-plugin-1.0.0.tgz
+dsh plugin --profile web add ./dsh-mobile-plugin-1.0.1.tgz
 dsh web
 ```
 
@@ -64,10 +64,10 @@ dsh web
 
 | 文件 | 平台 | 说明 |
 | --- | --- | --- |
-| `DSH-Mobile-1.0.0-android.apk` | Android | 直接安装 |
-| `DSH-Mobile-1.0.0-ios-unsigned.ipa` | iOS | **未签名**，需用 Xcode / AltStore 等重签后侧载 |
-| `DSH-Mobile-1.0.0-harmonyos-unsigned.hap` | HarmonyOS | **未签名**，需用 `hap-sign-tool` 签名后 `hdc install`（配置签名 Secrets 的 CI 会直接产出 `-signed.hap`） |
-| `dsh-mobile-plugin-1.0.0.tgz` | 插件 | 安装到 DSH Web 宿主 |
+| `DSH-Mobile-1.0.1-android.apk` | Android | 直接安装 |
+| `DSH-Mobile-1.0.1-ios-unsigned.ipa` | iOS | **未签名**，需用 Xcode / AltStore 等重签后侧载 |
+| `DSH-Mobile-1.0.1-harmonyos-unsigned.hap` | HarmonyOS | **未签名**，需用 `hap-sign-tool` 签名后 `hdc install`（配置签名 Secrets 的 CI 会直接产出 `-signed.hap`） |
+| `dsh-mobile-plugin-1.0.1.tgz` | 插件 | 安装到 DSH Web 宿主 |
 
 ### 3. 扫码连接
 
